@@ -12,6 +12,7 @@ New-Item -ItemType Directory -Force (Join-Path $stage 'notices') | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot 'docs/notices/XFold-LICENSE.txt') -Destination (Join-Path $stage 'notices')
 Copy-Item -LiteralPath (Join-Path $repoRoot 'data/README.md') -Destination (Join-Path $stage 'notices/language-data.md')
 Copy-Item -LiteralPath (Join-Path $repoRoot 'docs/notices/THIRD-PARTY-NOTICES.txt') -Destination (Join-Path $stage 'notices')
+Copy-Item -LiteralPath (Join-Path $repoRoot 'docs/notices/rust-stdlib') -Destination (Join-Path $stage 'notices') -Recurse -Force
 New-Item -ItemType Directory -Force (Join-Path $stage 'docs') | Out-Null
 Copy-Item -LiteralPath (Join-Path $repoRoot 'docs/NAMING.md') -Destination (Join-Path $stage 'docs')
 Copy-Item -LiteralPath (Join-Path $repoRoot 'docs/REAL-WORLD-TESTING.md') -Destination (Join-Path $stage 'docs')

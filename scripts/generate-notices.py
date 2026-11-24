@@ -3,6 +3,7 @@ import argparse
 import json
 from pathlib import Path
 import subprocess
+import shutil
 
 ROOT = Path(__file__).resolve().parent.parent
 
@@ -54,6 +55,15 @@ def main():
             lines.extend([f'--- {filename} ---', body, ''])
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+    sysroot = Path(subprocess.check_output(['rustc', '--print', 'sysroot'], text=True).strip())
+    rust_docs = sysroot / 'share/doc/rust'
+    runtime = args.output.parent / 'rust-stdlib'
+    runtime.mkdir(exist_ok=True)
+    copyright_file = rust_docs / 'COPYRIGHT-library.html'
+    if not copyright_file.exists():
+        copyright_file = rust_docs / 'COPYRIGHT.html'
+    shutil.copy2(copyright_file, runtime / copyright_file.name)
+    shutil.copytree(rust_docs / 'licenses', runtime / 'licenses', dirs_exist_ok=True)
     print(f'Notices: {len(entries)} dependencies, {args.output.stat().st_size:,} bytes')
     if missing:
         print('Packages without standalone licence files: ' + ', '.join(missing))

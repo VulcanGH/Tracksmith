@@ -30,6 +30,7 @@ Source: "installed.marker"; DestDir: "{app}"; DestName: ".tracksmith-installed";
 Source: "README.txt"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\docs\notices\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}\notices"; Flags: ignoreversion
+Source: "..\docs\notices\rust-stdlib\*"; DestDir: "{app}\notices\rust-stdlib"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "..\docs\notices\XFold-LICENSE.txt"; DestDir: "{app}\notices"; Flags: ignoreversion
 Source: "..\data\README.md"; DestDir: "{app}\notices"; DestName: "language-data.md"; Flags: ignoreversion
 Source: "..\docs\NAMING.md"; DestDir: "{app}\docs"; Flags: ignoreversion

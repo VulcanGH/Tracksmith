@@ -8,3 +8,4 @@ __pycache__/
 *.log
 .env
 /docs/PROGRESS.md
+/docs/notices/rust-stdlib/
