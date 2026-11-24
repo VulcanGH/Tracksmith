@@ -1,0 +1,2598 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "tracksmith",
+    "description": "Media metadata. Refined.",
+    "license": {
+      "name": "MIT",
+      "identifier": "MIT"
+    },
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/batch": {
+      "get": {
+        "tags": [],
+        "operationId": "batch_status",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/batch/cancel": {
+      "post": {
+        "tags": [],
+        "operationId": "batch_cancel",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/batch/history": {
+      "get": {
+        "tags": [],
+        "operationId": "batch_history",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BatchView"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/batch/pick-file": {
+      "post": {
+        "tags": [],
+        "operationId": "batch_pick_file",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PickerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/batch/preview": {
+      "post": {
+        "tags": [],
+        "operationId": "batch_preview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/batch/save": {
+      "post": {
+        "tags": [],
+        "operationId": "batch_save",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchSelection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/browser": {
+      "post": {
+        "tags": [],
+        "operationId": "browse",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BrowserRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryListing"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/desktop/dismiss": {
+      "post": {
+        "tags": [],
+        "operationId": "desktop_dismiss",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/desktop/folder": {
+      "post": {
+        "tags": [],
+        "operationId": "desktop_folder",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryListing"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/desktop/open": {
+      "post": {
+        "tags": [],
+        "operationId": "desktop_open",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Inspection"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/desktop/pending": {
+      "get": {
+        "tags": [],
+        "operationId": "desktop_pending",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/LaunchItem"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/desktop/settings": {
+      "get": {
+        "tags": [],
+        "operationId": "desktop_settings",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Integration"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [],
+        "operationId": "desktop_configure",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Integration"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Integration"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/desktop/stop": {
+      "post": {
+        "tags": [],
+        "operationId": "desktop_stop",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/favourite": {
+      "post": {
+        "tags": [],
+        "operationId": "favourite",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FavouriteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngineStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/inspect": {
+      "post": {
+        "tags": [],
+        "operationId": "inspect",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Inspection"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/locations": {
+      "post": {
+        "tags": [],
+        "operationId": "locations",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EngineStatus"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/open-location": {
+      "post": {
+        "tags": [],
+        "operationId": "open_location",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DirectoryListing"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/open-recent": {
+      "post": {
+        "tags": [],
+        "operationId": "open_recent",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Inspection"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/pick-file": {
+      "post": {
+        "tags": [],
+        "operationId": "pick_file",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PickerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Inspection"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/pick-folder": {
+      "post": {
+        "tags": [],
+        "operationId": "pick_folder",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PickerRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "$ref": "#/components/schemas/DirectoryListing"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/plans": {
+      "post": {
+        "tags": [],
+        "operationId": "plan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PlanRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/restore-plan": {
+      "post": {
+        "tags": [],
+        "operationId": "restore",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RestoreRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Plan"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/rules": {
+      "get": {
+        "tags": [],
+        "operationId": "rule_library",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleLibrary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      },
+      "post": {
+        "tags": [],
+        "operationId": "save_rule_library",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleLibrary"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleLibrary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/rules/catalog": {
+      "get": {
+        "tags": [],
+        "operationId": "rule_catalog",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleCatalog"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/rules/preview": {
+      "post": {
+        "tags": [],
+        "operationId": "rule_preview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RulePreviewRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RulePreview"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/rules/standard": {
+      "get": {
+        "tags": [],
+        "operationId": "standard_rules",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleLibrary"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/rules/validate": {
+      "post": {
+        "tags": [],
+        "operationId": "validate_rule_library",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RuleLibrary"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuleLibrary"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/save": {
+      "post": {
+        "tags": [],
+        "operationId": "save",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveReport"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/status": {
+      "get": {
+        "tags": [],
+        "operationId": "status",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Status"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session_token": []
+          }
+        ]
+      }
+    },
+    "/api/updates": {
+      "get": {
+        "tags": [],
+        "operationId": "update_status",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/updates/check": {
+      "post": {
+        "tags": [],
+        "operationId": "update_check",
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/updates/install": {
+      "post": {
+        "tags": [],
+        "operationId": "update_install",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Action": {
+        "type": "object",
+        "required": [
+          "property",
+          "source",
+          "value",
+          "missing"
+        ],
+        "properties": {
+          "missing": {
+            "$ref": "#/components/schemas/MissingValue"
+          },
+          "property": {
+            "$ref": "#/components/schemas/Property"
+          },
+          "source": {
+            "$ref": "#/components/schemas/ValueSource"
+          },
+          "value": {}
+        },
+        "additionalProperties": false
+      },
+      "ApiError": {
+        "type": "object",
+        "required": [
+          "message"
+        ],
+        "properties": {
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "BatchRequest": {
+        "type": "object",
+        "required": [
+          "sources",
+          "recursive",
+          "filter",
+          "profile_id"
+        ],
+        "properties": {
+          "filter": {
+            "type": "string"
+          },
+          "profile_id": {
+            "type": "string"
+          },
+          "recursive": {
+            "type": "boolean"
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "BatchRow": {
+        "type": "object",
+        "required": [
+          "id",
+          "path",
+          "status",
+          "changes",
+          "warnings"
+        ],
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Change"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "operation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "BatchSelection": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "selected"
+        ],
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "selected": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "BatchView": {
+        "type": "object",
+        "required": [
+          "id",
+          "phase",
+          "profile",
+          "revision",
+          "current",
+          "rows",
+          "messages",
+          "elapsed_ms",
+          "started_at"
+        ],
+        "properties": {
+          "current": {
+            "type": "string"
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "phase": {
+            "type": "string"
+          },
+          "profile": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BatchRow"
+            }
+          },
+          "started_at": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "BrowserEntry": {
+        "type": "object",
+        "required": [
+          "name",
+          "path",
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "BrowserLocation": {
+        "type": "object",
+        "required": [
+          "path",
+          "kind",
+          "authorized",
+          "favourite"
+        ],
+        "properties": {
+          "authorized": {
+            "type": "boolean"
+          },
+          "favourite": {
+            "type": "boolean"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "BrowserRequest": {
+        "type": "object",
+        "properties": {
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "search": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Change": {
+        "type": "object",
+        "required": [
+          "property",
+          "before",
+          "after"
+        ],
+        "properties": {
+          "after": {},
+          "before": {},
+          "property": {
+            "$ref": "#/components/schemas/Property"
+          },
+          "track_uid": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "Condition": {
+        "type": "object",
+        "required": [
+          "field",
+          "operator",
+          "value"
+        ],
+        "properties": {
+          "case_sensitive": {
+            "type": "boolean"
+          },
+          "field": {
+            "$ref": "#/components/schemas/Field"
+          },
+          "operator": {
+            "$ref": "#/components/schemas/Operator"
+          },
+          "value": {}
+        },
+        "additionalProperties": false
+      },
+      "ConditionGroup": {
+        "type": "object",
+        "required": [
+          "mode",
+          "conditions",
+          "groups"
+        ],
+        "properties": {
+          "conditions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Condition"
+            }
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConditionGroup"
+            }
+          },
+          "mode": {
+            "$ref": "#/components/schemas/MatchMode"
+          }
+        },
+        "additionalProperties": false
+      },
+      "DirectoryListing": {
+        "type": "object",
+        "required": [
+          "offset",
+          "locations",
+          "recent_files",
+          "entries",
+          "total_entries",
+          "truncated",
+          "notes"
+        ],
+        "properties": {
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BrowserEntry"
+            }
+          },
+          "locations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BrowserLocation"
+            }
+          },
+          "next_offset": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "parent": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "recent_files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BrowserLocation"
+            }
+          },
+          "total_entries": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Edit": {
+        "type": "object",
+        "required": [
+          "property",
+          "value"
+        ],
+        "properties": {
+          "property": {
+            "$ref": "#/components/schemas/Property"
+          },
+          "track_uid": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "value": {
+            "description": "Text, boolean, or null to remove a supported optional value."
+          }
+        },
+        "additionalProperties": false
+      },
+      "EditKey": {
+        "type": "object",
+        "required": [
+          "property"
+        ],
+        "properties": {
+          "property": {
+            "$ref": "#/components/schemas/Property"
+          },
+          "track_uid": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "EngineStatus": {
+        "type": "object",
+        "required": [
+          "roots",
+          "inspection_available",
+          "writing_available",
+          "diagnostics"
+        ],
+        "properties": {
+          "diagnostics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "inspection_available": {
+            "type": "boolean"
+          },
+          "roots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "writing_available": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FavouriteRequest": {
+        "type": "object",
+        "required": [
+          "path",
+          "favourite"
+        ],
+        "properties": {
+          "favourite": {
+            "type": "boolean"
+          },
+          "path": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Field": {
+        "type": "string",
+        "enum": [
+          "container",
+          "has_video",
+          "filename",
+          "file_path",
+          "track_type",
+          "codec",
+          "naming_codec",
+          "codec_profile",
+          "extended_format",
+          "channel_count",
+          "channel_layout",
+          "bitrate",
+          "sample_rate",
+          "bit_depth",
+          "width",
+          "height",
+          "resolution",
+          "hdr_format",
+          "dolby_vision_profile",
+          "existing_title",
+          "language",
+          "language_name",
+          "track_position",
+          "default",
+          "forced",
+          "enabled",
+          "hearing_impaired",
+          "commentary",
+          "original",
+          "visual_impaired",
+          "text_descriptions",
+          "lossless"
+        ]
+      },
+      "FieldDefinition": {
+        "type": "object",
+        "required": [
+          "field",
+          "label",
+          "kind",
+          "operators"
+        ],
+        "properties": {
+          "field": {
+            "$ref": "#/components/schemas/Field"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "operators": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Operator"
+            }
+          }
+        }
+      },
+      "IdRequest": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Inspection": {
+        "type": "object",
+        "required": [
+          "id",
+          "path",
+          "size_bytes",
+          "container",
+          "editable",
+          "tracks",
+          "attachments",
+          "chapters",
+          "tags",
+          "container_info",
+          "identification",
+          "warnings",
+          "write_available",
+          "elapsed_ms"
+        ],
+        "properties": {
+          "attachments": {},
+          "chapters": {
+            "$ref": "#/components/schemas/MetadataSection"
+          },
+          "container": {
+            "type": "string"
+          },
+          "container_info": {},
+          "editable": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Property"
+            }
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "id": {
+            "type": "string"
+          },
+          "identification": {
+            "description": "Complete identification output, retaining unknown components."
+          },
+          "mediainfo": {},
+          "path": {
+            "type": "string"
+          },
+          "size_bytes": {
+            "type": "string"
+          },
+          "tags": {
+            "$ref": "#/components/schemas/MetadataSection"
+          },
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tracks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Track"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "write_available": {
+            "type": "boolean"
+          }
+        }
+      },
+      "Integration": {
+        "type": "object",
+        "required": [
+          "startup",
+          "explorer"
+        ],
+        "properties": {
+          "explorer": {
+            "type": "boolean"
+          },
+          "startup": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
+      "LaunchItem": {
+        "type": "object",
+        "required": [
+          "id",
+          "path",
+          "folder"
+        ],
+        "properties": {
+          "folder": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "LocationsRequest": {
+        "type": "object",
+        "required": [
+          "roots"
+        ],
+        "properties": {
+          "roots": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "MatchMode": {
+        "type": "string",
+        "enum": [
+          "all",
+          "any"
+        ]
+      },
+      "MetadataSection": {
+        "type": "object",
+        "required": [
+          "available"
+        ],
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "tree": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/XmlElement"
+              }
+            ]
+          },
+          "xml": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "MissingValue": {
+        "type": "string",
+        "enum": [
+          "skip_action",
+          "skip_target"
+        ]
+      },
+      "OpenRequest": {
+        "type": "object",
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Operator": {
+        "type": "string",
+        "enum": [
+          "equals",
+          "does_not_equal",
+          "contains",
+          "does_not_contain",
+          "starts_with",
+          "ends_with",
+          "regex",
+          "greater_than",
+          "less_than",
+          "is_empty",
+          "is_not_empty",
+          "is_undefined"
+        ]
+      },
+      "OverwritePolicy": {
+        "type": "string",
+        "enum": [
+          "always",
+          "when_empty",
+          "when_undefined",
+          "preserve_existing",
+          "conditional"
+        ]
+      },
+      "PickerRequest": {
+        "type": "object",
+        "required": [
+          "marker"
+        ],
+        "properties": {
+          "marker": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Plan": {
+        "type": "object",
+        "required": [
+          "id",
+          "inspection_id",
+          "path",
+          "changes",
+          "warnings"
+        ],
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Change"
+            }
+          },
+          "id": {
+            "type": "string"
+          },
+          "inspection_id": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "PlanRequest": {
+        "type": "object",
+        "required": [
+          "inspection_id",
+          "edits"
+        ],
+        "properties": {
+          "edits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Edit"
+            }
+          },
+          "inspection_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Profile": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "rule_ids",
+          "preferred_languages",
+          "auto_apply"
+        ],
+        "properties": {
+          "auto_apply": {
+            "type": "boolean"
+          },
+          "description": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "overwrite_policy": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/OverwritePolicy"
+              }
+            ]
+          },
+          "preferred_languages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rule_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "Property": {
+        "type": "string",
+        "enum": [
+          "title",
+          "language",
+          "default",
+          "forced",
+          "enabled",
+          "hearing_impaired",
+          "commentary",
+          "original",
+          "visual_impaired",
+          "text_descriptions"
+        ]
+      },
+      "RestoreRequest": {
+        "type": "object",
+        "required": [
+          "operation_id"
+        ],
+        "properties": {
+          "operation_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Rule": {
+        "type": "object",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "enabled",
+          "priority",
+          "scope",
+          "conditions",
+          "actions",
+          "overwrite"
+        ],
+        "properties": {
+          "actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Action"
+            }
+          },
+          "conditions": {
+            "$ref": "#/components/schemas/ConditionGroup"
+          },
+          "description": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "overwrite": {
+            "$ref": "#/components/schemas/OverwritePolicy"
+          },
+          "priority": {
+            "type": "integer",
+            "format": "int32",
+            "description": "Lower numbers run first. Equal priorities are resolved by rule ID.",
+            "minimum": 0
+          },
+          "replace_when": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ConditionGroup"
+              }
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/Scope"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuleCatalog": {
+        "type": "object",
+        "required": [
+          "fields",
+          "variables"
+        ],
+        "properties": {
+          "fields": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FieldDefinition"
+            }
+          },
+          "variables": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TemplateVariable"
+            }
+          }
+        }
+      },
+      "RuleConflict": {
+        "type": "object",
+        "required": [
+          "pass",
+          "winner_id",
+          "ignored_id",
+          "target",
+          "winner",
+          "ignored",
+          "winning_value",
+          "ignored_value"
+        ],
+        "properties": {
+          "ignored": {
+            "type": "string"
+          },
+          "ignored_id": {
+            "type": "string"
+          },
+          "ignored_value": {},
+          "pass": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "target": {
+            "$ref": "#/components/schemas/EditKey"
+          },
+          "winner": {
+            "type": "string"
+          },
+          "winner_id": {
+            "type": "string"
+          },
+          "winning_value": {}
+        }
+      },
+      "RuleLibrary": {
+        "type": "object",
+        "required": [
+          "version",
+          "revision",
+          "active_profile_id",
+          "rules",
+          "profiles"
+        ],
+        "properties": {
+          "active_profile_id": {
+            "type": "string"
+          },
+          "profiles": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Profile"
+            }
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Rule"
+            }
+          },
+          "version": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": false
+      },
+      "RulePreview": {
+        "type": "object",
+        "required": [
+          "inspection_id",
+          "profile_id",
+          "proposals",
+          "conflicts",
+          "notes",
+          "passes",
+          "preserved_manual"
+        ],
+        "properties": {
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuleConflict"
+            }
+          },
+          "inspection_id": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "passes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "preserved_manual": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "profile_id": {
+            "type": "string"
+          },
+          "proposals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuleProposal"
+            }
+          }
+        }
+      },
+      "RulePreviewRequest": {
+        "type": "object",
+        "required": [
+          "inspection_id",
+          "profile_id",
+          "manual_edits"
+        ],
+        "properties": {
+          "inspection_id": {
+            "type": "string"
+          },
+          "manual_edits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Edit"
+            }
+          },
+          "profile_id": {
+            "type": "string"
+          },
+          "test_library": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RuleLibrary"
+              }
+            ]
+          },
+          "test_rule": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Rule"
+              }
+            ]
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuleProposal": {
+        "type": "object",
+        "required": [
+          "edit",
+          "before",
+          "rule_id",
+          "rule_name"
+        ],
+        "properties": {
+          "before": {},
+          "edit": {
+            "$ref": "#/components/schemas/Edit"
+          },
+          "rule_id": {
+            "type": "string"
+          },
+          "rule_name": {
+            "type": "string"
+          }
+        }
+      },
+      "SaveReport": {
+        "type": "object",
+        "required": [
+          "operation_id",
+          "success",
+          "status",
+          "discrepancies",
+          "warnings",
+          "elapsed_ms",
+          "restore_available"
+        ],
+        "properties": {
+          "discrepancies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "elapsed_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "inspection": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/Inspection"
+              }
+            ]
+          },
+          "operation_id": {
+            "type": "string"
+          },
+          "restore_available": {
+            "type": "boolean"
+          },
+          "status": {
+            "type": "string"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "SaveRequest": {
+        "type": "object",
+        "required": [
+          "plan_id"
+        ],
+        "properties": {
+          "plan_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "Scope": {
+        "type": "string",
+        "enum": [
+          "container",
+          "tracks",
+          "video",
+          "audio",
+          "subtitles",
+          "other"
+        ]
+      },
+      "Status": {
+        "type": "object",
+        "required": [
+          "name",
+          "version",
+          "phase",
+          "config_dir",
+          "media_root_count",
+          "editing_available",
+          "engine"
+        ],
+        "properties": {
+          "config_dir": {
+            "type": "string"
+          },
+          "editing_available": {
+            "type": "boolean"
+          },
+          "engine": {
+            "$ref": "#/components/schemas/EngineStatus"
+          },
+          "media_root_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        }
+      },
+      "TemplateVariable": {
+        "type": "object",
+        "required": [
+          "name",
+          "label"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "Track": {
+        "type": "object",
+        "required": [
+          "id",
+          "uid",
+          "number",
+          "kind",
+          "codec",
+          "editable",
+          "flags",
+          "technical",
+          "mapping"
+        ],
+        "properties": {
+          "codec": {
+            "type": "string"
+          },
+          "editable": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Property"
+            }
+          },
+          "flags": {
+            "type": "object",
+            "additionalProperties": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "id": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "kind": {
+            "type": "string"
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "language_ietf": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "mapping": {
+            "type": "string"
+          },
+          "mediainfo": {},
+          "number": {
+            "type": "string"
+          },
+          "technical": {},
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "uid": {
+            "type": "string",
+            "description": "Decimal string: a Matroska UID may exceed JavaScript's integer precision."
+          }
+        }
+      },
+      "UpdateRequest": {
+        "type": "object",
+        "required": [
+          "version",
+          "drafts_clear"
+        ],
+        "properties": {
+          "drafts_clear": {
+            "type": "boolean"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "UpdateStatus": {
+        "type": "object",
+        "required": [
+          "current",
+          "repository",
+          "phase",
+          "kind",
+          "notes",
+          "message",
+          "publisher_pinned"
+        ],
+        "properties": {
+          "available": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "checked_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          },
+          "current": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "last_result": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "notes": {
+            "type": "string"
+          },
+          "phase": {
+            "type": "string"
+          },
+          "publisher_pinned": {
+            "type": "boolean"
+          },
+          "release_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "repository": {
+            "type": "string"
+          },
+          "size": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "ValueSource": {
+        "type": "string",
+        "enum": [
+          "literal",
+          "template",
+          "preferred_language",
+          "clear"
+        ]
+      },
+      "XmlElement": {
+        "type": "object",
+        "required": [
+          "name",
+          "attributes",
+          "children"
+        ],
+        "properties": {
+          "attributes": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "children": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/XmlElement"
+            }
+          },
+          "name": {
+            "type": "string"
+          },
+          "text": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "session_token": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    }
+  }
+}

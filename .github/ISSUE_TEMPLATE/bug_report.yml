@@ -1,0 +1,26 @@
+name: Bug report
+description: Report a reproducible Tracksmith issue
+body:
+  - type: textarea
+    id: issue
+    attributes:
+      label: What happened and what did you expect?
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Tracksmith version and Windows version
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: textarea
+    id: details
+    attributes:
+      label: Relevant details
+      description: Include utility versions and anonymised codec/profile/channel-layout or operation details. Do not attach media files, session.json, session URLs or credentials.

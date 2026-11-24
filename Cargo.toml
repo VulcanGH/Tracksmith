@@ -1,0 +1,37 @@
+[package]
+name = "tracksmith"
+version = "1.0.0"
+edition = "2024"
+default-run = "tracksmith"
+description = "Media metadata. Refined."
+publish = false
+license = "MIT"
+repository = "https://github.com/VulcanGH/Tracksmith"
+
+[dependencies]
+anyhow = "1"
+axum = "0.8"
+clap = { version = "4", features = ["derive"] }
+mime_guess = "2"
+rust-embed = "8"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+language-tags = "0.3"
+roxmltree = "0.21"
+regex = "1"
+libloading = "0.8"
+tempfile = "3"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "net", "signal", "time", "sync"] }
+tower = { version = "0.5", features = ["limit", "util"] }
+tower-http = { version = "0.6", features = ["trace", "limit"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+utoipa = { version = "5", features = ["axum_extras"] }
+uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_System_Com", "Win32_System_LibraryLoader", "Win32_Graphics_Gdi", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+
+[profile.release]
+lto = "thin"
+strip = true

@@ -1,0 +1,62 @@
+name: Prepare release draft
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  release:
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    env:
+      TRACKSMITH_UPDATE_REPOSITORY: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - name: Validate tag and package versions
+        shell: pwsh
+        run: |
+          $version=(Get-Content Cargo.toml | Select-String '^version = "([^"]+)"').Matches[0].Groups[1].Value
+          if ($env:GITHUB_REF_NAME -cne "v$version") { throw 'Tag must match the Cargo version' }
+          if ((Get-Content frontend/package.json -Raw | ConvertFrom-Json).version -cne $version) { throw 'Frontend version must match Cargo' }
+          "RELEASE_VERSION=$version" >> $env:GITHUB_ENV
+      - name: Build release
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build.ps1 -Release
+      - name: Focused release checks
+        run: |
+          cargo fmt --check
+          cargo test --locked --lib
+          cargo clippy --locked --all-targets -- -D warnings
+          powershell -NoProfile -ExecutionPolicy Bypass -File scripts/update-check.ps1
+          python scripts/smoke.py target/release/tracksmith.exe
+          node --experimental-strip-types --test frontend/src/lib/update-lock.test.ts
+      - name: Set up local installer compiler
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-inno.ps1
+      - name: Build packages and checksums
+        run: ./scripts/package.ps1 -Version $env:RELEASE_VERSION
+      - name: Prepare GitHub draft and assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          $tag=$env:GITHUB_REF_NAME
+          $PSNativeCommandUseErrorActionPreference=$false
+          $draft=gh release view $tag --json isDraft --jq '.isDraft' 2>$null
+          $found=$LASTEXITCODE -eq 0
+          if ($found) {
+            if ($draft -ne 'true') { throw 'Refusing to replace an already published release' }
+          } else {
+            gh release create $tag --draft --verify-tag --title "Tracksmith $env:RELEASE_VERSION" --notes-file CHANGELOG.md
+            if ($LASTEXITCODE -ne 0) { throw 'Draft creation failed' }
+          }
+          $assets=@("artifacts/packages/Tracksmith-$env:RELEASE_VERSION-Setup.exe","artifacts/packages/Tracksmith-$env:RELEASE_VERSION-portable.zip","artifacts/packages/Tracksmith-$env:RELEASE_VERSION-SHA256SUMS.txt")
+          gh release upload $tag @assets --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Release asset upload failed' }
