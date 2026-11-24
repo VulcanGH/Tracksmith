@@ -1,6 +1,9 @@
-# Tracksmith
+<p align="center">
+  <img src="frontend/public/tracksmith.svg" width="72" height="72" alt="Tracksmith logo">
+</p>
 
-**Media metadata. Refined.**
+<h1 align="center">Tracksmith</h1>
+<p align="center"><strong>Media metadata. Refined.</strong></p>
 
 A local Windows 11 media metadata editor built with Rust, Axum, React and TypeScript.
 Tracksmith includes editable standard naming, reviewed batches and native Windows integration. All changes
@@ -71,8 +74,8 @@ an authenticated browser request alone cannot grant an arbitrary launch path.
 
 Built-in update checks are in About, Settings and the tray. Downloads use verified
 GitHub Releases packages and restart only after active work and drafts are clear.
-See [updates and release publishing](docs/UPDATES.md). The repository/release must be
-published before a newer version can be offered; checks themselves are available now.
+See [updates and release publishing](docs/UPDATES.md). Only newer published stable
+releases are offered by the updater.
 
 After a release build, run `scripts/package.ps1 -Compiler PATH\TO\ISCC.exe` with Inno Setup 7
 (or the local `.tools/innosetup/ISCC.exe`). It creates an unsigned portable ZIP and an installer

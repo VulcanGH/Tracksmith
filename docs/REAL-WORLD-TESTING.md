@@ -35,6 +35,5 @@ original and proposed title, expected title, operation/report ID where relevant,
 and a minimal anonymised inspection excerpt. Logs are in the config folder's logs
 directory. Do not share session.json, session URLs or session credentials.
 
-Installer install/uninstall, tray appearance and native picker interaction still
-require this hands-on check; automated desktop interaction was unavailable during
-development. Packages are unsigned Windows builds. MP4 is out of scope.
+Include installer install/uninstall, tray controls and native file/folder selection
+in hands-on checks. Packages are unsigned Windows builds. MP4 is out of scope.

@@ -45,8 +45,8 @@ Explorer selections wait in the interface; existing drafts are preserved.
 
 Updates: About / Settings / tray -> Check for updates. Stable GitHub Releases only;
 installation is explicit. Finish work and clear drafts before updating. Installed
-copies use Windows Setup; portable copies replace their executable. No public release
-is offered until VulcanGH/tracksmith has been published. See docs/UPDATES.md.
+copies use Windows Setup; portable copies replace their executable. Only newer
+published stable releases are offered. See docs/UPDATES.md.
 
 This Windows release is unsigned. The source is MIT-licensed; LICENSE and
 third-party notices are included. Stable releases and source are available at
