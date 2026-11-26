@@ -42,9 +42,13 @@ naming defaults and faster previews that preserve technical naming accuracy.
 
 ### Upgrading from 1.0.0
 
-Existing rules and profiles are preserved. To adopt the updated naming defaults,
-choose **Rules → Add standard profile**, save the library and make the new profile
-active. Existing custom profiles remain available.
+The updated standard defaults apply automatically when no rules library has been
+explicitly saved. No profile setup is required for those installations.
+
+Explicitly saved rules and profiles retain their settings. Only if you have an
+older saved library and want to replace its naming defaults, choose
+**Rules → Add standard profile**, save the library and make the new profile active.
+Existing custom profiles remain available.
 
 Available through the in-app updater as a stable Windows x64 release, with an
 installer, portable ZIP and SHA-256 checksums. MKVToolNix and MediaInfo remain

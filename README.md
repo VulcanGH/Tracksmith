@@ -170,7 +170,8 @@ information is retained and unspecified language displays `Unknown`.
 
 Edit individual codec templates and overwrite policies in **Rules**, or **Duplicate** a profile to
 copy its rules independently. Disable automatic staging, disable individual rules or choose another active
-profile in **Profiles**. Existing saved libraries are preserved. **Add standard profile** adds a fresh
+profile in **Profiles**. Built-in defaults update automatically when no rules library
+has been explicitly saved. Existing saved libraries retain their settings. **Add standard profile** adds a fresh
 factory copy for review without replacing your rules; save and make it active to adopt it.
 Explicit commentary descriptions and subtitle role labels in existing titles are retained where recognised;
 Forced/SDH/accessibility flags also contribute labels. Signs & Songs is never inferred merely from Forced.

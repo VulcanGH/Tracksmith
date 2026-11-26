@@ -2,9 +2,11 @@
 
 The factory profile contains 34 ordinary, editable rules. It is active on a new
 library and automatically **stages** metadata changes on open. Saving always
-requires review. Existing saved libraries are never replaced.
-To adopt these defaults in an existing installation, use **Add standard profile**,
-save the library and make that profile active. Custom profiles remain available.
+requires review. Installations without an explicitly saved rules library receive
+the updated defaults automatically; no profile setup is required.
+Explicitly saved libraries retain their settings. Only to replace an older saved
+profile with these defaults, use **Add standard profile**, save the library and
+make that profile active. Custom profiles remain available.
 
 ## Video and container titles
 
