@@ -86,6 +86,10 @@ def main():
             def settled():
                 for _ in range(300):
                     view = request('batch')
+                    if view['total_files'] is not None:
+                        assert len(view['rows']) <= view['total_files'], view
+                    elif view['phase'] == 'planning':
+                        assert not view['rows'], view
                     if view['phase'] not in ('planning', 'saving'):
                         return view
                     time.sleep(.1)
@@ -121,6 +125,7 @@ def main():
             request('batch/preview', payload)
             standard = settled()
             assert standard['phase'] == 'review', standard
+            assert standard['total_files'] == len(standard['rows']) == 3
             inspected = request('inspect', {'path': str(first)})
             preview = request('rules/preview', {
                 'inspection_id': inspected['id'], 'profile_id': 'general',

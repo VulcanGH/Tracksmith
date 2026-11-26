@@ -576,6 +576,8 @@ export interface components {
             rows: components["schemas"]["BatchRow"][];
             /** Format: int64 */
             started_at: number;
+            /** @description Unknown while discovering files and in reports from older versions. */
+            total_files?: number | null;
         };
         BrowserEntry: {
             kind: string;

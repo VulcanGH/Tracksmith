@@ -83,6 +83,34 @@ def main():
             default_preview = request('rules/preview', {'inspection_id': default_doc['id'], 'profile_id': 'general', 'manual_edits': [], 'test_rule': None, 'test_library': None})
             assert any(p['edit']['value'] == 'Unknown FLAC 1.0' for p in default_preview['proposals']), default_preview
             assert hashlib.sha256(fixture.read_bytes()).digest() == original
+            subtitles = root / 'commentary.srt'
+            subtitles.write_text(
+                '1\n00:00:00,000 --> 00:00:00,900\nCommentary fixture\n',
+                encoding='utf-8',
+            )
+            commentary = root / 'commentary.mkv'
+            subprocess.run([
+                ffmpeg, '-v', 'error', '-i', str(fixture), '-i',
+                str(subtitles), '-map', '0:a:0', '-map', '1:s:0',
+                '-c:a', 'copy', '-c:s', 'srt', '-metadata',
+                'title=commentary', '-metadata:s:a:0', 'language=eng',
+                '-metadata:s:a:0', 'title=English FLAC 1.0 (Commentary)',
+                '-metadata:s:s:0', 'language=eng', '-metadata:s:s:0',
+                'title=English (SRT, Commentary)', str(commentary),
+            ], check=True, capture_output=True, timeout=20)
+            commentary_hash = hashlib.sha256(commentary.read_bytes()).digest()
+            for _ in range(3):
+                doc = request('inspect', {'path': str(commentary)})
+                preview = request('rules/preview', {
+                    'inspection_id': doc['id'], 'profile_id': 'general',
+                    'manual_edits': [], 'test_rule': None,
+                    'test_library': None,
+                })
+                assert not preview['proposals'], preview
+            assert (
+                hashlib.sha256(commentary.read_bytes()).digest()
+                == commentary_hash
+            )
             group = {'mode': 'all', 'conditions': [], 'groups': []}
             def rule(id, priority, property, source, value, overwrite):
                 return {'id': id, 'name': id, 'description': '', 'enabled': True, 'priority': priority,

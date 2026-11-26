@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { LoaderCircle } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "./ui/button";
 import {
@@ -16,7 +17,7 @@ import {
   dismissPending,
   type BatchView,
 } from "../api/client";
-import { filterBatchRows } from "../lib/batch";
+import { batchStatusText, filterBatchRows } from "../lib/batch";
 import { prettyPath } from "../lib/paths";
 
 export function BatchPage({ active }: { active: boolean }) {
@@ -213,8 +214,13 @@ export function BatchPage({ active }: { active: boolean }) {
       {job.error && <p role="alert">{job.error.message}</p>}
       {view?.id && (
         <>
-          <div className="editor-toolbar" role="status">
-            <strong>{view.phase}</strong>
+          <div className="editor-toolbar">
+            <strong className="batch-progress" role="status">
+              {running && (
+                <LoaderCircle className="batch-spinner" size={16} aria-hidden="true" />
+              )}
+              {batchStatusText(view)}
+            </strong>
             <span>
               {view.profile} · revision {view.revision} · {view.rows.length}{" "}
               files · {(view.elapsed_ms / 1000).toFixed(1)}s
@@ -222,21 +228,26 @@ export function BatchPage({ active }: { active: boolean }) {
             <span>
               {view.rows.filter((r) => r.status === "verified").length} verified
             </span>
-            {running ? (
+            {running && (
               <Button variant="outline" onClick={() => void run(cancelBatch)}>
                 Stop after current file
               </Button>
-            ) : (
-              view.phase === "review" && (
-                <Button
-                  disabled={busy || !selected.length}
-                  onClick={() => void run(() => saveBatch(view.id, selected))}
-                >
-                  Save {selected.length} reviewed files
-                  {hiddenSelected > 0 && ` (${hiddenSelected} hidden)`}
-                </Button>
-              )
             )}
+            <div className="batch-save-action">
+              <Button
+                disabled={busy || view.phase !== "review" || !selected.length}
+                aria-describedby={view.phase === "planning" ? "batch-save-hint" : undefined}
+                onClick={() => void run(() => saveBatch(view.id, selected))}
+              >
+                Save {selected.length} reviewed {selected.length === 1 ? "file" : "files"}
+                {hiddenSelected > 0 && ` (${hiddenSelected} hidden)`}
+              </Button>
+              {view.phase === "planning" && (
+                <span className="muted" id="batch-save-hint">
+                  Available when scanning finishes.
+                </span>
+              )}
+            </div>
             {!running && view.phase === "review" && (
               <Button
                 variant="outline"

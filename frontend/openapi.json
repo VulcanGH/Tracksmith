@@ -7,7 +7,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "1.0.1"
+    "version": "1.0.2"
   },
   "paths": {
     "/api/batch": {
@@ -1301,6 +1301,14 @@
           "started_at": {
             "type": "integer",
             "format": "int64",
+            "minimum": 0
+          },
+          "total_files": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Unknown while discovering files and in reports from older versions.",
             "minimum": 0
           }
         }

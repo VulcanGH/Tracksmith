@@ -68,6 +68,9 @@ Batch preview reads track metadata with mkvmerge and retains MediaInfo when the 
 profile uses technical facts (including standard Atmos, codec-profile and channel-layout naming).
 Chapter/tag extraction is deferred to full inspection at save time. The guarded writer and
 post-write verification are unchanged. Every file must still be inspected to classify it as unchanged.
+While previewing, a spinner and checked/total count show that scanning is still running.
+The save button remains visible but disabled until **Preview complete** confirms that
+the full batch is ready for review. **Stop after current file** remains available.
 
 There is no fixed batch file-count cap. Resource limits remain: 32 sources, 100,000 discovery entries, 10,000 folders, 32 nesting levels and
 8 MiB of preview rows. Discovery skips reparse points. Warning summaries are bounded to 8 KiB

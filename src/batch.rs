@@ -30,6 +30,9 @@ pub struct BatchView {
     pub revision: u32,
     pub current: String,
     pub rows: Vec<BatchRow>,
+    /// Unknown while discovering files and in reports from older versions.
+    #[serde(default)]
+    pub total_files: Option<usize>,
     pub messages: Vec<String>,
     pub elapsed_ms: u64,
     pub started_at: u64,
@@ -147,6 +150,7 @@ impl Batch {
                     &request.filter,
                     &batch.cancel,
                 )?;
+                batch.update(|j| j.view.total_files = Some(paths.len()));
                 let mut retained = 0;
                 for path in paths {
                     if batch.cancel.load(Ordering::SeqCst) {
@@ -373,6 +377,18 @@ pub fn history(dir: &Path) -> Result<Vec<BatchView>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn historical_reports_without_discovery_totals_remain_readable() {
+        let original = BatchView {
+            phase: "finished".into(),
+            ..Default::default()
+        };
+        let mut value = serde_json::to_value(&original).unwrap();
+        value.as_object_mut().unwrap().remove("total_files");
+        let restored: BatchView = serde_json::from_value(value).unwrap();
+        assert!(restored.total_files.is_none());
+        assert_eq!(restored.phase, "finished");
+    }
     #[test]
     fn clearing_resets_review_but_refuses_active_work() {
         let batch = Batch::default();

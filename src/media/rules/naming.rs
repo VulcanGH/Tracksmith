@@ -236,27 +236,114 @@ fn marked(title: &str, word: &str) -> bool {
         .split(|c: char| !c.is_ascii_alphanumeric())
         .any(|v| v.eq_ignore_ascii_case(word))
 }
-fn commentary_detail(title: &str) -> Option<String> {
-    let value = title.trim();
-    let lower = value.to_ascii_lowercase();
-    for marker in ["commentary — ", "commentary - ", "commentary by "] {
-        if let Some(start) = lower.rfind(marker) {
-            return Some(
-                value[start + marker.len()..]
-                    .trim_end_matches(')')
-                    .split(", ")
-                    .next()
-                    .unwrap_or("")
-                    .trim()
-                    .into(),
-            );
+fn role_fields(value: &str) -> Vec<&str> {
+    let mut depth = 0usize;
+    value
+        .split(|character| match character {
+            '(' => {
+                depth += 1;
+                false
+            }
+            ')' => {
+                depth = depth.saturating_sub(1);
+                false
+            }
+            ',' => depth == 0,
+            _ => false,
+        })
+        .map(str::trim)
+        .collect()
+}
+
+fn role_label(value: &str) -> bool {
+    [
+        "Forced",
+        "SDH",
+        "CC",
+        "Commentary",
+        "Audio Description",
+        "Signs & Songs",
+    ]
+    .iter()
+    .any(|label| value.eq_ignore_ascii_case(label))
+}
+
+fn commentary_section(title: &str) -> &str {
+    let title = title.trim();
+    if title.ends_with(')') {
+        let mut depth = 0usize;
+        for (index, character) in title.char_indices().rev() {
+            match character {
+                ')' => depth += 1,
+                '(' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        let section = &title[index + 1..title.len() - 1];
+                        if marked(section, "commentary") && !marked(&title[..index], "commentary") {
+                            return section.trim();
+                        }
+                        break;
+                    }
+                }
+                _ => (),
+            }
         }
     }
-    let segment = value.rsplit('(').next()?.trim_end_matches(')').trim();
-    if segment.to_lowercase().ends_with(" commentary") {
-        return Some(segment[..segment.len() - " commentary".len()].trim().into());
+    title
+}
+
+fn commentary_detail(title: &str, format: Option<&str>) -> Option<String> {
+    let section = commentary_section(title);
+    let lower = section.to_ascii_lowercase();
+    let mut depth = 0usize;
+    let marker = lower.char_indices().find_map(|(start, character)| {
+        match character {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            _ => (),
+        }
+        if depth != 0
+            || character != 'c'
+            || lower[..start]
+                .chars()
+                .next_back()
+                .is_some_and(char::is_alphanumeric)
+        {
+            return None;
+        }
+        ["commentary — ", "commentary - ", "commentary by "]
+            .iter()
+            .find(|marker| lower[start..].starts_with(**marker))
+            .map(|marker| (start, marker.len()))
+    });
+    let detail = if let Some((start, length)) = marker {
+        &section[start + length..]
+    } else {
+        // A standard qualifier list is not a person's commentary description.
+        let field = role_fields(section)
+            .into_iter()
+            .find(|field| marked(field, "commentary"))?;
+        if !field.to_ascii_lowercase().ends_with(" commentary") {
+            return None;
+        }
+        &field[..field.len() - " commentary".len()]
+    };
+    let mut fields = role_fields(detail);
+    while fields
+        .last()
+        .is_some_and(|field| field.is_empty() || role_label(field))
+    {
+        fields.pop();
     }
-    None
+    // Repair codec/qualifier-only descriptions produced by the old parser.
+    if fields.is_empty()
+        || fields.iter().all(|field| {
+            role_label(field) || format.is_some_and(|format| field.eq_ignore_ascii_case(format))
+        })
+    {
+        return None;
+    }
+    Some(fields.join(", "))
 }
 fn flag(context: &ContextData<'_>, property: Property) -> bool {
     context
@@ -273,8 +360,7 @@ pub fn audio_role(context: &ContextData<'_>) -> String {
     let mut roles = vec![];
     if flag(context, Property::Commentary) || marked(title, "commentary") {
         roles.push(
-            commentary_detail(title)
-                .filter(|s| !s.is_empty())
+            commentary_detail(title, context.track().and_then(codec))
                 .map(|s| format!("Commentary — {s}"))
                 .unwrap_or_else(|| "Commentary".into()),
         );
@@ -314,7 +400,7 @@ pub fn subtitle_qualifiers(context: &ContextData<'_>) -> String {
     }
     if flag(context, Property::Commentary) || marked(title, "commentary") {
         labels.push(
-            commentary_detail(title)
+            commentary_detail(title, context.track().and_then(codec))
                 .map(|s| format!("Commentary — {s}"))
                 .unwrap_or_else(|| "Commentary".into()),
         );

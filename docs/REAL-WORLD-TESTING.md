@@ -1,4 +1,4 @@
-# Real-world testing — 1.0.1
+# Real-world testing — 1.0.2
 
 Use copies of a few representative MKV/MKA files first: saves modify originals in
 place. Operation records restore verified metadata values; they are not file backups.

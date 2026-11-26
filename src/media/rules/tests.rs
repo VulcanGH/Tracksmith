@@ -83,6 +83,179 @@ fn request() -> RulePreviewRequest {
     }
 }
 
+fn assert_stable_track_title(mut doc: Inspection, before: &str, expected: &str) {
+    let library = RuleLibrary::default();
+    doc.tracks.truncate(1);
+    doc.tracks[0].title = Some(before.into());
+    let preview = evaluate(&doc, &library, &request()).unwrap();
+    if before == expected {
+        assert!(preview.proposals.is_empty(), "Already correct: {before}");
+    } else {
+        assert_eq!(preview.proposals.len(), 1, "Input: {before}");
+        let edit = &preview.proposals[0].edit;
+        assert_eq!(edit.track_uid.as_deref(), Some("1"));
+        assert_eq!(edit.property, Property::Title);
+        assert_eq!(edit.value, json!(expected), "Input: {before}");
+        doc.tracks[0].title = edit.value.as_str().map(str::to_owned);
+    }
+    // Simulate subsequent save/reopen cycles, not just staged rule passes.
+    for cycle in 1..=5 {
+        let preview = evaluate(&doc, &library, &request()).unwrap();
+        assert!(preview.proposals.is_empty(), "Cycle {cycle}: {expected}");
+    }
+}
+
+#[test]
+fn subtitle_commentary_titles_are_stable_for_all_standard_formats() {
+    for (code, format) in [
+        ("S_TEXT/UTF8", "SRT"),
+        ("S_HDMV/PGS", "PGS"),
+        ("S_TEXT/ASS", "ASS"),
+        ("S_TEXT/SSA", "SSA"),
+        ("S_VOBSUB", "VobSub"),
+        ("S_TEXT/WEBVTT", "WebVTT"),
+        ("S_DVBSUB", "DVB"),
+    ] {
+        let mut doc = fixture();
+        doc.tracks[0].kind = "subtitles".into();
+        doc.tracks[0].codec = format.into();
+        doc.tracks[0].technical = json!({"codec_id": code});
+        doc.tracks[0].language_ietf = Some("en".into());
+        let plain = format!("English ({format}, Commentary)");
+        assert_stable_track_title(doc.clone(), "Commentary", &plain);
+        assert_stable_track_title(doc.clone(), &plain, &plain);
+        assert_stable_track_title(
+            doc.clone(),
+            &format!("English ({format}, Commentary — {format},)"),
+            &plain,
+        );
+        assert_stable_track_title(
+            doc.clone(),
+            &format!("English ({format}, Commentary — {format})"),
+            &plain,
+        );
+        assert_stable_track_title(
+            doc.clone(),
+            "Director Commentary",
+            &format!("English ({format}, Commentary — Director)"),
+        );
+        assert_stable_track_title(
+            doc.clone(),
+            &format!("English ({format}, Forced, SDH, CC, Commentary, Signs & Songs)"),
+            &format!("English ({format}, Forced, SDH, CC, Commentary, Signs & Songs)"),
+        );
+        assert_stable_track_title(
+            doc.clone(),
+            &format!("English ({format}, Forced, Commentary — {format}, Forced,)"),
+            &format!("English ({format}, Forced, Commentary)"),
+        );
+        doc.tracks[0].flags.insert("commentary".into(), Some(true));
+        assert_stable_track_title(doc.clone(), "", &plain);
+    }
+}
+
+#[test]
+fn named_commentary_preserves_unicode_commas_and_balanced_parentheses() {
+    let mut doc = fixture();
+    doc.tracks[0].kind = "subtitles".into();
+    doc.tracks[0].codec = "PGS".into();
+    doc.tracks[0].technical = json!({"codec_id": "S_HDMV/PGS"});
+    doc.tracks[0].language_ietf = Some("en".into());
+    for (before, expected) in [
+        ("İpek Commentary", "English (PGS, Commentary — İpek)"),
+        (
+            "Commentary by Jane, John",
+            "English (PGS, Commentary — Jane, John)",
+        ),
+        (
+            "Commentary - Director (Jane, John)",
+            "English (PGS, Commentary — Director (Jane, John))",
+        ),
+        (
+            "Director (Jane, John) Commentary",
+            "English (PGS, Commentary — Director (Jane, John))",
+        ),
+        (
+            "Commentary by Director (Commentary)",
+            "English (PGS, Commentary — Director (Commentary))",
+        ),
+        (
+            "Director (Commentary by Anne) Commentary",
+            "English (PGS, Commentary — Director (Commentary by Anne))",
+        ),
+        (
+            "English (PGS, Commentary — Director, Producer, Signs & Songs)",
+            "English (PGS, Commentary — Director, Producer, Signs & Songs)",
+        ),
+        (
+            "English (PGS, Commentary — PGS expert)",
+            "English (PGS, Commentary — PGS expert)",
+        ),
+        (
+            "English (PGS, Commentary — Commentary by Jane)",
+            "English (PGS, Commentary — Commentary by Jane)",
+        ),
+        ("English (PGS, Commentary — )", "English (PGS, Commentary)"),
+    ] {
+        assert_stable_track_title(doc.clone(), before, expected);
+    }
+    doc.tracks[0].language_ietf = Some("ja".into());
+    assert_stable_track_title(
+        doc,
+        "Japanese (PGS, Commentary)",
+        "Japanese (PGS, Commentary)",
+    );
+}
+
+#[test]
+fn audio_commentary_and_description_roles_are_stable() {
+    let mut doc = fixture();
+    doc.tracks[0].language_ietf = Some("en".into());
+    for (before, expected) in [
+        ("Commentary", "English FLAC 2ch (Commentary)"),
+        (
+            "Director Commentary",
+            "English FLAC 2ch (Commentary — Director)",
+        ),
+        (
+            "English FLAC 2ch (Commentary)",
+            "English FLAC 2ch (Commentary)",
+        ),
+        (
+            "English FLAC 2ch (Audio Description, Commentary)",
+            "English FLAC 2ch (Commentary, Audio Description)",
+        ),
+        (
+            "English FLAC 2ch (Commentary — Audio Description,, Audio Description)",
+            "English FLAC 2ch (Commentary, Audio Description)",
+        ),
+        (
+            "English FLAC 2ch (Commentary — Director (Jane, John), Audio Description)",
+            "English FLAC 2ch (Commentary — Director (Jane, John), Audio Description)",
+        ),
+    ] {
+        assert_stable_track_title(doc.clone(), before, expected);
+    }
+    doc.tracks[0].flags.insert("commentary".into(), Some(true));
+    doc.tracks[0]
+        .flags
+        .insert("visual_impaired".into(), Some(true));
+    assert_stable_track_title(
+        doc.clone(),
+        "",
+        "English FLAC 2ch (Commentary, Audio Description)",
+    );
+    doc.tracks[0].codec = "TrueHD".into();
+    doc.tracks[0].technical = json!({"codec_id": "A_TRUEHD", "audio_channels": 8});
+    doc.tracks[0].mediainfo =
+        Some(json!({"Format_Commercial_IfAny": "Dolby TrueHD with Dolby Atmos"}));
+    assert_stable_track_title(
+        doc,
+        "Director Commentary",
+        "English Dolby TrueHD 8ch + Atmos (Commentary — Director, Audio Description)",
+    );
+}
+
 #[test]
 fn video_language_uses_first_audio_then_english_and_preserves_defined_values() {
     let library = RuleLibrary::default();

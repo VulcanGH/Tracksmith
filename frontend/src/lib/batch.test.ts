@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { filterBatchRows } from "./batch.ts";
-import type { BatchRow } from "../api/client.ts";
+import { batchStatusText, filterBatchRows } from "./batch.ts";
+import type { BatchRow, BatchView } from "../api/client.ts";
 
 const row = (id: string, status: string, warnings: string[] = []): BatchRow => ({
   id,
@@ -10,6 +10,33 @@ const row = (id: string, status: string, warnings: string[] = []): BatchRow => (
   warnings,
   changes: [],
   operation_id: null,
+});
+
+const view = (phase: string, rows: BatchRow[] = []): BatchView => ({
+  id: "batch", phase, rows, total_files: null, profile: "Standard",
+  revision: 0, current: "", messages: [], elapsed_ms: 0, started_at: 0,
+});
+
+test("discovery and inspection explain that a populated list is still scanning", () => {
+  assert.equal(batchStatusText(view("planning")), "Finding files…");
+  const scanning = view("planning", [row("fix", "ready"), row("ok", "unchanged")]);
+  scanning.total_files = 456;
+  assert.equal(batchStatusText(scanning),
+    "Scanning files… 2 of 456 checked · 1 needs changes.");
+});
+
+test("completion distinguishes ready files, unchanged files, empty scans and errors", () => {
+  assert.equal(batchStatusText(view("review", [row("fix", "ready")])),
+    "Preview complete — 1 file ready to save.");
+  assert.equal(batchStatusText(view("review", [row("ok", "unchanged")])),
+    "Preview complete — no changes needed.");
+  assert.equal(batchStatusText(view("review")),
+    "Preview complete — no matching files found.");
+  assert.equal(batchStatusText(view("review", [row("bad", "error")])),
+    "Preview complete — no files ready to save. Review the errors.");
+  assert.match(batchStatusText(view("saving")), /^Saving/);
+  assert.match(batchStatusText(view("cancelled")), /Preview again/);
+  assert.match(batchStatusText(view("failed")), /failed/);
 });
 
 test("skip unchanged retains errors and warning-bearing files", () => {

@@ -1911,6 +1911,30 @@ input[data-source="manual"] {
   display: grid;
   gap: 8px;
 }
+
+.batch-progress,
+.batch-save-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.batch-save-action {
+  flex-wrap: wrap;
+}
+.batch-spinner {
+  flex-shrink: 0;
+  animation: batch-spin 0.9s linear infinite;
+}
+@keyframes batch-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .batch-spinner {
+    animation: none;
+  }
+}
 .batch-page .editor-toolbar,
 .details-panel .editor-toolbar {
   display: flex;
