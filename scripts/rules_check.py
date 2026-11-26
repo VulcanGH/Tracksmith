@@ -74,7 +74,9 @@ def main():
             library = request('rules')
             assert library['revision'] == 0 and len(library['rules']) >= 29
             assert library['profiles'][0]['auto_apply']
-            assert all(a['property'] == 'title' for r in library['rules'] for a in r['actions'])
+            assert all(a['property'] == 'title' or
+                       (r['scope'] == 'video' and a['property'] == 'language')
+                       for r in library['rules'] for a in r['actions'])
             standard = request('rules/standard')
             assert standard == library
             default_doc = request('inspect', {'path': str(fixture)})

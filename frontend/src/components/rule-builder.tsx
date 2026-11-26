@@ -290,7 +290,7 @@ export function ActionBuilder({
     action.property === "title"
       ? ["literal", "template", "clear"]
       : action.property === "language"
-        ? ["literal", "preferred_language"]
+        ? ["literal", "preferred_language", "first_audio_language"]
         : ["literal"];
   return (
     <div className="action-card">
@@ -329,15 +329,16 @@ export function ActionBuilder({
             onChange({
               ...action,
               source,
-              value:
-                source === "clear" || source === "preferred_language"
-                  ? null
-                  : source === "template"
-                    ? "{codec}"
-                    : action.property === "title" ||
-                        action.property === "language"
-                      ? ""
-                      : true,
+              value: ["clear", "preferred_language", "first_audio_language"].includes(
+                source,
+              )
+                ? null
+                : source === "template"
+                  ? "{codec}"
+                  : action.property === "title" ||
+                      action.property === "language"
+                    ? ""
+                    : true,
             });
           }}
         >
@@ -345,11 +346,13 @@ export function ActionBuilder({
             <option key={source} value={source}>
               {source === "preferred_language"
                 ? "Profile language fallback"
-                : source === "clear"
-                  ? "Clear title"
-                  : source === "template"
-                    ? "Title template"
-                    : "Set value"}
+                : source === "first_audio_language"
+                  ? "First audio language (or English)"
+                  : source === "clear"
+                    ? "Clear title"
+                    : source === "template"
+                      ? "Title template"
+                      : "Set value"}
             </option>
           ))}
         </select>
@@ -447,6 +450,13 @@ export function ActionBuilder({
         <p className="muted">
           Uses the profile's first preferred language. This is a user-configured
           fallback, not language detection.
+        </p>
+      )}
+      {action.source === "first_audio_language" && (
+        <p className="muted">
+          Uses the first audio track in container order, including its regional
+          language tag. Falls back to en if that track has no defined language
+          or the file has no audio tracks.
         </p>
       )}
     </div>

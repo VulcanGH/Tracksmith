@@ -60,6 +60,18 @@ pub struct Batch {
     pub cancel: AtomicBool,
 }
 impl Batch {
+    pub fn clear(&self) -> Result<BatchView> {
+        ensure!(
+            self.busy
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok(),
+            "Stop the active batch before clearing"
+        );
+        self.update(|job| *job = Job::default());
+        self.cancel.store(false, Ordering::SeqCst);
+        self.busy.store(false, Ordering::SeqCst);
+        Ok(self.view())
+    }
     pub fn discard_review(&self) {
         if self.busy.load(Ordering::SeqCst) {
             return;
@@ -361,6 +373,22 @@ pub fn history(dir: &Path) -> Result<Vec<BatchView>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn clearing_resets_review_but_refuses_active_work() {
+        let batch = Batch::default();
+        batch.update(|job| {
+            job.view.id = "reviewed".into();
+            job.view.phase = "review".into();
+            job.view.messages.push("Old message".into());
+        });
+        batch.busy.store(true, Ordering::SeqCst);
+        assert!(batch.clear().is_err());
+        assert_eq!(batch.view().id, "reviewed");
+        batch.busy.store(false, Ordering::SeqCst);
+        let view = batch.clear().unwrap();
+        assert!(view.id.is_empty() && view.phase.is_empty() && view.messages.is_empty());
+        assert!(!batch.busy.load(Ordering::SeqCst));
+    }
     #[test]
     fn batches_accept_more_than_500_files() {
         let dir = tempfile::tempdir().unwrap();

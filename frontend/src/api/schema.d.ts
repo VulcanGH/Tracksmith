@@ -36,6 +36,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/batch/clear": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["batch_clear"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/batch/history": {
         parameters: {
             query?: never;
@@ -845,7 +861,7 @@ export interface components {
             size?: number | null;
         };
         /** @enum {string} */
-        ValueSource: "literal" | "template" | "preferred_language" | "clear";
+        ValueSource: "literal" | "template" | "preferred_language" | "first_audio_language" | "clear";
         XmlElement: {
             attributes: {
                 [key: string]: string;
@@ -897,6 +913,33 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["BatchView"];
+                };
+            };
+        };
+    };
+    batch_clear: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BatchView"];
+                };
+            };
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiError"];
                 };
             };
         };

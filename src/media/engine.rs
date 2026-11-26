@@ -151,7 +151,11 @@ impl Engine {
     ) -> Result<BatchTicket> {
         let path = self.boundary.authorize(path)?;
         let identity = Identity::capture(&path)?;
-        let document = self.adapter.inspect(&path)?;
+        let started = Instant::now();
+        let document = self
+            .adapter
+            .inspect_batch(&path, super::rules::needs_media_info(library, profile_id)?)?;
+        let inspection_ms = started.elapsed().as_millis();
         ensure!(
             document.write_available,
             "Writing is unavailable for this file"
@@ -181,6 +185,11 @@ impl Engine {
         }
         warnings.extend(self.adapter.validate_plan(&document, &changes)?);
         identity.verify(&self.boundary.authorize(&path)?)?;
+        tracing::debug!(
+            inspection_ms,
+            planning_ms = started.elapsed().as_millis() - inspection_ms,
+            "Batch file prepared"
+        );
         Ok(BatchTicket {
             identity,
             path,

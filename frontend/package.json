@@ -1,6 +1,6 @@
 {
   "name": "tracksmith-ui",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "test:editor": "node --experimental-strip-types --test src/lib/draft.test.ts",
+    "test:batch": "node --experimental-strip-types --test src/lib/batch.test.ts",
     "generate:api": "openapi-typescript openapi.json -o src/api/schema.d.ts"
   },
   "dependencies": {

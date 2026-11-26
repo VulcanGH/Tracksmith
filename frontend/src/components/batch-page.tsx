@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "./ui/button";
 import {
   chooseBatchFile,
@@ -9,14 +9,18 @@ import {
   previewBatch,
   saveBatch,
   cancelBatch,
+  clearBatch,
+  type BatchRow,
   getPending,
   folderPending,
   dismissPending,
   type BatchView,
 } from "../api/client";
+import { filterBatchRows } from "../lib/batch";
 import { prettyPath } from "../lib/paths";
 
 export function BatchPage({ active }: { active: boolean }) {
+  const jobClient = useQueryClient();
   const library = useQuery({
     queryKey: ["rule-library"],
     queryFn: getRuleLibrary,
@@ -25,7 +29,10 @@ export function BatchPage({ active }: { active: boolean }) {
     queryKey: ["batch"],
     queryFn: getBatch,
     enabled: active,
-    refetchInterval: active ? 1000 : false,
+    refetchInterval: (query) =>
+      active && ["planning", "saving"].includes(query.state.data?.phase ?? "")
+        ? 1000
+        : false,
   });
   const pending = useQuery({
     queryKey: ["desktop-pending"],
@@ -37,6 +44,8 @@ export function BatchPage({ active }: { active: boolean }) {
   const [profile, setProfile] = useState("");
   const [recursive, setRecursive] = useState(false);
   const [filter, setFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [skipUnchanged, setSkipUnchanged] = useState(true);
   const [excluded, setExcluded] = useState<Set<string>>(new Set());
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -61,10 +70,13 @@ export function BatchPage({ active }: { active: boolean }) {
         old.includes(path) ? old : [...old, path].slice(0, 32),
       );
   }
+  const visibleRows = filterBatchRows(view?.rows ?? [], search, skipUnchanged);
   const selected =
     view?.rows
       .filter((r) => r.status === "ready" && !excluded.has(r.id))
       .map((r) => r.id) ?? [];
+  const visibleIds = new Set(visibleRows.map((row) => row.id));
+  const hiddenSelected = selected.filter((id) => !visibleIds.has(id)).length;
   return (
     <section className="batch-page">
       <div className="editor-toolbar">
@@ -82,6 +94,23 @@ export function BatchPage({ active }: { active: boolean }) {
           }
         >
           Add folder
+        </Button>
+        <Button
+          variant="outline"
+          disabled={busy || running || (!sources.length && !view?.id)}
+          onClick={() =>
+            void run(async () => {
+              await jobClient.cancelQueries({ queryKey: ["batch"] });
+              const cleared = await clearBatch();
+              jobClient.setQueryData(["batch"], cleared);
+              setSources([]);
+              setExcluded(new Set());
+              setSearch("");
+              setFilter("");
+            })
+          }
+        >
+          Clear
         </Button>
         <select
           aria-label="Batch profile"
@@ -103,6 +132,14 @@ export function BatchPage({ active }: { active: boolean }) {
             onChange={(e) => setRecursive(e.target.checked)}
           />{" "}
           Subfolders
+        </label>
+        <label title="Hide unchanged files without warnings">
+          <input
+            type="checkbox"
+            checked={skipUnchanged}
+            onChange={(e) => setSkipUnchanged(e.target.checked)}
+          />{" "}
+          Skip unchanged
         </label>
         <input
           aria-label="Filename contains"
@@ -196,6 +233,7 @@ export function BatchPage({ active }: { active: boolean }) {
                   onClick={() => void run(() => saveBatch(view.id, selected))}
                 >
                   Save {selected.length} reviewed files
+                  {hiddenSelected > 0 && ` (${hiddenSelected} hidden)`}
                 </Button>
               )
             )}
@@ -209,6 +247,23 @@ export function BatchPage({ active }: { active: boolean }) {
               </Button>
             )}
           </div>
+          <div className="editor-toolbar">
+            <input
+              aria-label="Search listed files"
+              placeholder="Search listed files…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <span className="muted">
+              {visibleRows.length} shown · {selected.length} selected
+              {" · "}
+              {view.rows.filter((r) => r.status === "ready").length} needing changes
+              {" · "}
+              {view.rows.filter((r) => r.status === "unchanged").length} unchanged
+              {" · "}
+              {view.rows.filter((r) => r.status === "error").length} failed
+            </span>
+          </div>
           {view.current && (
             <p className="muted" role="status">
               {prettyPath(view.current)}
@@ -219,8 +274,11 @@ export function BatchPage({ active }: { active: boolean }) {
               {m}
             </p>
           ))}
+          {view.rows.length > 0 && !visibleRows.length && (
+            <p className="muted">No files match the current filters.</p>
+          )}
           <BatchRows
-            view={view}
+            view={{ ...view, rows: visibleRows }}
             excluded={excluded}
             toggle={(id) =>
               setExcluded((old) => {
@@ -248,55 +306,82 @@ export function BatchRows({
   return (
     <div className="batch-results">
       {view.rows.map((row) => (
-        <details className="batch-row" key={row.id}>
-          <summary>
-            {toggle && row.status === "ready" && (
-              <input
-                type="checkbox"
-                aria-label={`Include ${prettyPath(row.path)}`}
-                checked={!excluded?.has(row.id)}
-                onClick={(e) => e.stopPropagation()}
-                onChange={() => toggle(row.id)}
-              />
-            )}
-            <span className="batch-status">{row.status}</span>
-            <span title={row.path}>{prettyPath(row.path)}</span>
-            <span className="muted">{row.changes.length} changes</span>
-          </summary>
-          {row.changes.length > 0 && (
-            <table>
-              <thead>
-                <tr>
-                  <th>Target</th>
-                  <th>Property</th>
-                  <th>Before</th>
-                  <th>After</th>
-                </tr>
-              </thead>
-              <tbody>
-                {row.changes.map((c, i) => (
-                  <tr key={i}>
-                    <td>
-                      {c.track_uid ? `Track ${c.track_uid}` : "Container"}
-                    </td>
-                    <td>{c.property}</td>
-                    <td>{JSON.stringify(c.before)}</td>
-                    <td>{JSON.stringify(c.after)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-          {row.warnings.map((warning, i) => (
-            <p className="muted" key={i}>
-              {warning}
-            </p>
-          ))}
-          {row.operation_id && (
-            <p className="muted">Metadata record: {row.operation_id}</p>
-          )}
-        </details>
+        <BatchResultRow
+          key={row.id}
+          row={row}
+          excluded={excluded?.has(row.id)}
+          toggle={toggle}
+        />
       ))}
     </div>
+  );
+}
+
+function BatchResultRow({
+  row,
+  excluded,
+  toggle,
+}: {
+  row: BatchRow;
+  excluded?: boolean;
+  toggle?: (id: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <details
+      className="batch-row"
+      onToggle={(event) => setOpen(event.currentTarget.open)}
+    >
+      <summary>
+        {toggle && row.status === "ready" && (
+          <input
+            type="checkbox"
+            aria-label={`Include ${prettyPath(row.path)}`}
+            checked={!excluded}
+            onClick={(e) => e.stopPropagation()}
+            onChange={() => toggle(row.id)}
+          />
+        )}
+        <span className="batch-status">{row.status}</span>
+        <span title={row.path}>{prettyPath(row.path)}</span>
+        <span className="muted">
+          {row.changes.length} changes
+          {row.warnings.length > 0 && ` · ${row.warnings.length} warnings`}
+        </span>
+      </summary>
+      {open && row.changes.length > 0 && (
+        <table>
+          <thead>
+            <tr>
+              <th>Target</th>
+              <th>Property</th>
+              <th>Before</th>
+              <th>After</th>
+            </tr>
+          </thead>
+          <tbody>
+            {row.changes.map((c, i) => (
+              <tr key={i}>
+                <td>
+                  {c.track_uid ? `Track ${c.track_uid}` : "Container"}
+                </td>
+                <td>{c.property}</td>
+                <td>{JSON.stringify(c.before)}</td>
+                <td>{JSON.stringify(c.after)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {open &&
+        row.warnings.map((warning, i) => (
+          <p className="muted" key={i}>
+            {warning}
+          </p>
+        ))}
+      {open && row.operation_id && (
+        <p className="muted">Metadata record: {row.operation_id}</p>
+      )}
+    </details>
   );
 }

@@ -37,6 +37,8 @@ jobs:
           cargo clippy --locked --all-targets -- -D warnings
           powershell -NoProfile -ExecutionPolicy Bypass -File scripts/update-check.ps1
           python scripts/smoke.py target/release/tracksmith.exe
+          npm --prefix frontend run test:editor
+          npm --prefix frontend run test:batch
           node --experimental-strip-types --test frontend/src/lib/update-lock.test.ts
       - name: Set up local installer compiler
         run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-inno.ps1

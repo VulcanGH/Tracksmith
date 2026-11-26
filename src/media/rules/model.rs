@@ -103,6 +103,7 @@ pub enum ValueSource {
     Literal,
     Template,
     PreferredLanguage,
+    FirstAudioLanguage,
     Clear,
 }
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, ToSchema)]

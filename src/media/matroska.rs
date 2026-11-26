@@ -177,6 +177,202 @@ impl Matroska {
         };
         Ok(serde_json::from_slice(&output.checked()?)?)
     }
+
+    fn inspect_metadata(&self, path: &Path, full: bool, enrich: bool) -> Result<Inspection> {
+        let started = Instant::now();
+        let extension = path
+            .extension()
+            .and_then(|v| v.to_str())
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        ensure!(
+            matches!(extension.as_str(), "mkv" | "mka"),
+            "Only MKV and MKA are supported in this phase"
+        );
+        let bytes = process::run(
+            self.merge.as_ref().context("mkvmerge is not configured")?,
+            &["-J".into(), path.as_os_str().into()],
+            false,
+        )?
+        .checked()?;
+        let mut raw: Value =
+            serde_json::from_slice(&bytes).context("Malformed mkvmerge identification")?;
+        ensure!(
+            raw["container"]["recognized"] == true
+                && raw["container"]["supported"] == true
+                && raw["container"]["type"] == "Matroska",
+            "File is not a supported Matroska container"
+        );
+        let raw_tracks = raw["tracks"]
+            .as_array()
+            .context("Missing Matroska tracks")?;
+        ensure!(
+            !raw_tracks.is_empty() && raw_tracks.len() <= 1024,
+            "Track count is missing or exceeds the inspection limit"
+        );
+        let mut warnings = self.diagnostics.clone();
+        for warning in raw["warnings"].as_array().into_iter().flatten() {
+            warnings.push(warning.to_string());
+        }
+        let mut media = if enrich {
+            match self.enrich(path) {
+                Ok(value) => Some(value),
+                Err(error) => {
+                    warnings.push(format!("MediaInfo inspection unavailable: {error:#}"));
+                    None
+                }
+            }
+        } else {
+            None
+        };
+        let mut identities = HashSet::new();
+        let mut numbers = HashSet::new();
+        let mut ids = HashSet::new();
+        let mut tracks = Vec::new();
+        for track in raw_tracks {
+            let properties = &track["properties"];
+            let uid = number(&properties["uid"]).context("Track UID is missing")?;
+            ensure!(
+                uid.parse::<u64>()? != 0 && identities.insert(uid.clone()),
+                "Track UIDs are zero or ambiguous"
+            );
+            let track_number = number(&properties["number"]).context("Track number is missing")?;
+            ensure!(
+                track_number.parse::<u64>()? != 0 && numbers.insert(track_number.clone()),
+                "Track numbers are zero or ambiguous"
+            );
+            let id = u32::try_from(track["id"].as_u64().context("Invalid mkvmerge track ID")?)?;
+            ensure!(ids.insert(id), "mkvmerge track IDs are ambiguous");
+            let kind = track["type"].as_str().unwrap_or("unknown").to_string();
+            let expected_type = match kind.as_str() {
+                "audio" => "Audio",
+                "video" => "Video",
+                "subtitles" => "Text",
+                _ => "Other",
+            };
+            let candidates: Vec<_> = media
+                .as_ref()
+                .and_then(|v| v["media"]["track"].as_array())
+                .into_iter()
+                .flatten()
+                .filter(|candidate| {
+                    number(&candidate["ID"]).as_deref() == Some(track_number.as_str())
+                        && candidate["@type"] == expected_type
+                })
+                .collect();
+            // Require agreement between number, kind and UID. No index-based fallback.
+            let enrichment = if candidates.len() == 1
+                && number(&candidates[0]["UniqueID"]).as_deref() == Some(uid.as_str())
+            {
+                Some(candidates[0].clone())
+            } else {
+                None
+            };
+            let mapping = if enrichment.is_some() {
+                "uid_number_type_verified"
+            } else if enrich {
+                warnings.push(format!("Track {track_number}: MediaInfo mapping unconfirmed; technical data remains visible in raw MediaInfo output"));
+                "unconfirmed"
+            } else {
+                "not_requested"
+            };
+            let flags: BTreeMap<_, _> = Property::ALL
+                .into_iter()
+                .filter(|p| !matches!(p, Property::Title | Property::Language))
+                .map(|p| {
+                    (
+                        serde_json::to_value(p)
+                            .unwrap()
+                            .as_str()
+                            .unwrap()
+                            .to_string(),
+                        properties[p.json_key()].as_bool(),
+                    )
+                })
+                .collect();
+            let mut technical = properties.clone();
+            json_safe(&mut technical);
+            tracks.push(Track {
+                id,
+                uid,
+                number: track_number,
+                kind,
+                codec: track["codec"].as_str().unwrap_or("Unknown").into(),
+                title: properties["track_name"].as_str().map(str::to_owned),
+                language: properties["language"].as_str().map(str::to_owned),
+                language_ietf: properties["language_ietf"].as_str().map(str::to_owned),
+                editable: Property::ALL
+                    .into_iter()
+                    .filter(|p| {
+                        self.supported.contains(p.tool_name(false))
+                            && (*p != Property::Language
+                                || self.supported.contains("language-ietf"))
+                    })
+                    .collect(),
+                flags,
+                technical,
+                mediainfo: enrichment,
+                mapping: mapping.into(),
+            });
+        }
+        // Preview needs track facts only. Full inspection at save time still
+        // captures chapters/tags for preservation and post-write verification.
+        let section = |mode| {
+            if full {
+                self.section(path, mode)
+            } else {
+                MetadataSection {
+                    available: false,
+                    xml: None,
+                    tree: None,
+                    error: Some("Deferred until save".into()),
+                }
+            }
+        };
+        let chapters = section("chapters");
+        let tags = section("tags");
+        let write_available = self.writing_available()
+            && (!full || (chapters.available && tags.available))
+            && !std::fs::metadata(path)?.permissions().readonly();
+        if !write_available {
+            for track in &mut tracks {
+                track.editable.clear();
+            }
+        }
+        json_safe(&mut raw);
+        if let Some(media) = &mut media {
+            json_safe(media);
+        }
+        for track in &mut tracks {
+            if let Some(media) = &mut track.mediainfo {
+                json_safe(media);
+            }
+        }
+        Ok(Inspection {
+            id: uuid::Uuid::new_v4().to_string(),
+            path: path.display().to_string(),
+            size_bytes: std::fs::metadata(path)?.len().to_string(),
+            container: "Matroska".into(),
+            title: raw["container"]["properties"]["title"]
+                .as_str()
+                .map(str::to_owned),
+            editable: if write_available && self.supported.contains("title") {
+                vec![Property::Title]
+            } else {
+                vec![]
+            },
+            tracks,
+            attachments: raw["attachments"].clone(),
+            chapters,
+            tags,
+            container_info: raw["container"].clone(),
+            identification: raw,
+            mediainfo: media,
+            warnings,
+            write_available,
+            elapsed_ms: started.elapsed().as_millis() as u64,
+        })
+    }
 }
 
 fn number(value: &Value) -> Option<String> {
@@ -279,180 +475,10 @@ impl ContainerAdapter for Matroska {
             .map(|_| "This BCP 47 language has no matching ISO 639-2 code. Its IETF tag is preserved; the legacy language field will be und (unspecified).".to_string()).collect())
     }
     fn inspect(&self, path: &Path) -> Result<Inspection> {
-        let started = Instant::now();
-        let extension = path
-            .extension()
-            .and_then(|v| v.to_str())
-            .unwrap_or("")
-            .to_ascii_lowercase();
-        ensure!(
-            matches!(extension.as_str(), "mkv" | "mka"),
-            "Only MKV and MKA are supported in this phase"
-        );
-        let bytes = process::run(
-            self.merge.as_ref().context("mkvmerge is not configured")?,
-            &["-J".into(), path.as_os_str().into()],
-            false,
-        )?
-        .checked()?;
-        let mut raw: Value =
-            serde_json::from_slice(&bytes).context("Malformed mkvmerge identification")?;
-        ensure!(
-            raw["container"]["recognized"] == true
-                && raw["container"]["supported"] == true
-                && raw["container"]["type"] == "Matroska",
-            "File is not a supported Matroska container"
-        );
-        let raw_tracks = raw["tracks"]
-            .as_array()
-            .context("Missing Matroska tracks")?;
-        ensure!(
-            !raw_tracks.is_empty() && raw_tracks.len() <= 1024,
-            "Track count is missing or exceeds the inspection limit"
-        );
-        let mut warnings = self.diagnostics.clone();
-        for warning in raw["warnings"].as_array().into_iter().flatten() {
-            warnings.push(warning.to_string());
-        }
-        let mut media = match self.enrich(path) {
-            Ok(value) => Some(value),
-            Err(error) => {
-                warnings.push(format!("MediaInfo inspection unavailable: {error:#}"));
-                None
-            }
-        };
-        let mut identities = HashSet::new();
-        let mut numbers = HashSet::new();
-        let mut ids = HashSet::new();
-        let mut tracks = Vec::new();
-        for track in raw_tracks {
-            let properties = &track["properties"];
-            let uid = number(&properties["uid"]).context("Track UID is missing")?;
-            ensure!(
-                uid.parse::<u64>()? != 0 && identities.insert(uid.clone()),
-                "Track UIDs are zero or ambiguous"
-            );
-            let track_number = number(&properties["number"]).context("Track number is missing")?;
-            ensure!(
-                track_number.parse::<u64>()? != 0 && numbers.insert(track_number.clone()),
-                "Track numbers are zero or ambiguous"
-            );
-            let id = u32::try_from(track["id"].as_u64().context("Invalid mkvmerge track ID")?)?;
-            ensure!(ids.insert(id), "mkvmerge track IDs are ambiguous");
-            let kind = track["type"].as_str().unwrap_or("unknown").to_string();
-            let expected_type = match kind.as_str() {
-                "audio" => "Audio",
-                "video" => "Video",
-                "subtitles" => "Text",
-                _ => "Other",
-            };
-            let candidates: Vec<_> = media
-                .as_ref()
-                .and_then(|v| v["media"]["track"].as_array())
-                .into_iter()
-                .flatten()
-                .filter(|candidate| {
-                    number(&candidate["ID"]).as_deref() == Some(track_number.as_str())
-                        && candidate["@type"] == expected_type
-                })
-                .collect();
-            // Require agreement between number, kind and UID. No index-based fallback.
-            let enrichment = if candidates.len() == 1
-                && number(&candidates[0]["UniqueID"]).as_deref() == Some(uid.as_str())
-            {
-                Some(candidates[0].clone())
-            } else {
-                None
-            };
-            let mapping = if enrichment.is_some() {
-                "uid_number_type_verified"
-            } else {
-                warnings.push(format!("Track {track_number}: MediaInfo mapping unconfirmed; technical data remains visible in raw MediaInfo output"));
-                "unconfirmed"
-            };
-            let flags: BTreeMap<_, _> = Property::ALL
-                .into_iter()
-                .filter(|p| !matches!(p, Property::Title | Property::Language))
-                .map(|p| {
-                    (
-                        serde_json::to_value(p)
-                            .unwrap()
-                            .as_str()
-                            .unwrap()
-                            .to_string(),
-                        properties[p.json_key()].as_bool(),
-                    )
-                })
-                .collect();
-            let mut technical = properties.clone();
-            json_safe(&mut technical);
-            tracks.push(Track {
-                id,
-                uid,
-                number: track_number,
-                kind,
-                codec: track["codec"].as_str().unwrap_or("Unknown").into(),
-                title: properties["track_name"].as_str().map(str::to_owned),
-                language: properties["language"].as_str().map(str::to_owned),
-                language_ietf: properties["language_ietf"].as_str().map(str::to_owned),
-                editable: Property::ALL
-                    .into_iter()
-                    .filter(|p| {
-                        self.supported.contains(p.tool_name(false))
-                            && (*p != Property::Language
-                                || self.supported.contains("language-ietf"))
-                    })
-                    .collect(),
-                flags,
-                technical,
-                mediainfo: enrichment,
-                mapping: mapping.into(),
-            });
-        }
-        let chapters = self.section(path, "chapters");
-        let tags = self.section(path, "tags");
-        let write_available = self.writing_available()
-            && chapters.available
-            && tags.available
-            && !std::fs::metadata(path)?.permissions().readonly();
-        if !write_available {
-            for track in &mut tracks {
-                track.editable.clear();
-            }
-        }
-        json_safe(&mut raw);
-        if let Some(media) = &mut media {
-            json_safe(media);
-        }
-        for track in &mut tracks {
-            if let Some(media) = &mut track.mediainfo {
-                json_safe(media);
-            }
-        }
-        Ok(Inspection {
-            id: uuid::Uuid::new_v4().to_string(),
-            path: path.display().to_string(),
-            size_bytes: std::fs::metadata(path)?.len().to_string(),
-            container: "Matroska".into(),
-            title: raw["container"]["properties"]["title"]
-                .as_str()
-                .map(str::to_owned),
-            editable: if write_available && self.supported.contains("title") {
-                vec![Property::Title]
-            } else {
-                vec![]
-            },
-            tracks,
-            attachments: raw["attachments"].clone(),
-            chapters,
-            tags,
-            container_info: raw["container"].clone(),
-            identification: raw,
-            mediainfo: media,
-            warnings,
-            write_available,
-            elapsed_ms: started.elapsed().as_millis() as u64,
-        })
+        self.inspect_metadata(path, true, true)
+    }
+    fn inspect_batch(&self, path: &Path, enrich: bool) -> Result<Inspection> {
+        self.inspect_metadata(path, false, enrich)
     }
     fn write(&self, path: &Path, changes: &[Change]) -> Result<process::Output> {
         let args = command_args(path, changes)?;

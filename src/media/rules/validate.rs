@@ -208,9 +208,9 @@ pub fn validate_rule(rule: &Rule) -> Result<()> {
                 ensure!(!text.trim().is_empty(), "Template is empty");
                 template_parts(text)?;
             }
-            ValueSource::PreferredLanguage => ensure!(
+            ValueSource::PreferredLanguage | ValueSource::FirstAudioLanguage => ensure!(
                 action.property == Property::Language && action.value.is_null(),
-                "Preferred language actions must target language"
+                "Language fallback actions must target language and have a null value"
             ),
             ValueSource::Literal => match action.property {
                 Property::Title => ensure!(

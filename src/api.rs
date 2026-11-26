@@ -169,6 +169,12 @@ fn failure(error: anyhow::Error) -> ApiError {
 async fn batch_status(State(state): State<Arc<AppState>>) -> Json<crate::batch::BatchView> {
     Json(state.batch.view())
 }
+#[utoipa::path(post, path="/api/batch/clear", responses((status=200,body=crate::batch::BatchView), (status=422,body=ApiError)))]
+async fn batch_clear(
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<crate::batch::BatchView>, ApiError> {
+    state.batch.clear().map(Json).map_err(failure)
+}
 #[utoipa::path(post, path="/api/batch/preview", request_body=crate::batch::BatchRequest, responses((status=200,body=crate::batch::BatchView)))]
 async fn batch_preview(
     State(state): State<Arc<AppState>>,
@@ -583,7 +589,7 @@ async fn locations(
 }
 
 #[derive(OpenApi)]
-#[openapi(paths(status, inspect, pick_file, browse, pick_folder, open_recent, open_location, favourite, plan, save, restore, locations, rule_library, standard_rules, save_rule_library, validate_rule_library, rule_catalog, rule_preview, batch_status, batch_preview, batch_save, batch_cancel, batch_history, batch_pick_file, desktop_pending, desktop_open, desktop_folder, desktop_dismiss, desktop_settings, desktop_configure, desktop_stop, update_status, update_check, update_install), components(schemas(Status, ApiError)), modifiers(&SecurityScheme))]
+#[openapi(paths(status, inspect, pick_file, browse, pick_folder, open_recent, open_location, favourite, plan, save, restore, locations, rule_library, standard_rules, save_rule_library, validate_rule_library, rule_catalog, rule_preview, batch_status, batch_clear, batch_preview, batch_save, batch_cancel, batch_history, batch_pick_file, desktop_pending, desktop_open, desktop_folder, desktop_dismiss, desktop_settings, desktop_configure, desktop_stop, update_status, update_check, update_install), components(schemas(Status, ApiError)), modifiers(&SecurityScheme))]
 pub struct ApiDoc;
 struct SecurityScheme;
 impl utoipa::Modify for SecurityScheme {
@@ -607,6 +613,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/updates/check", post(update_check))
         .route("/api/updates/install", post(update_install))
         .route("/api/batch", get(batch_status))
+        .route("/api/batch/clear", post(batch_clear))
         .route("/api/batch/preview", post(batch_preview))
         .route("/api/batch/save", post(batch_save))
         .route("/api/batch/cancel", post(batch_cancel))

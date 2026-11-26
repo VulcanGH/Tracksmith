@@ -121,7 +121,7 @@ function App() {
           ))}
         </nav>
         <div className="sidebar-bottom">
-          <span className="version">v{data?.version ?? "1.0.0"} · Editor</span>
+          <span className="version">v{data?.version ?? "…"} · Editor</span>
           <Button
             variant="ghost"
             size="icon"
@@ -272,7 +272,7 @@ function App() {
             <section className="details-panel">
               <h2>
                 Tracksmith{" "}
-                <span className="muted">{data?.version ?? "1.0.0"}</span>
+                <span className="muted">{data?.version ?? "Connecting…"}</span>
               </h2>
               <p>Media metadata. Refined.</p>
               <UpdatesPanel draftsClear={draftsClear} />

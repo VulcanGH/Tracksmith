@@ -64,15 +64,33 @@ pub fn library() -> RuleLibrary {
     }
     rules.push(Rule {
         id: "standard-movie-title".into(), name: "Video track title: filename without extension".into(),
-        description: "Set each video track title to the exact filename without its final extension. Keep punctuation, spacing and release details. Leaves the container title and audio/subtitle naming unchanged.".into(),
+        description: "Set each video track title to the exact filename without its final extension. Keep punctuation, spacing and release details.".into(),
         enabled: true, priority: rules.len() as u32, scope: Scope::Video,
         conditions: ConditionGroup { mode: MatchMode::All, conditions: vec![], groups: vec![] },
         actions: vec![Action { property: Property::Title, source: ValueSource::Template, value: json!("{filename_stem}"), missing: MissingValue::SkipTarget }],
         overwrite: OverwritePolicy::Always, replace_when: None,
     });
+    rules.push(Rule {
+        id: "standard-container-title".into(),
+        name: "Container title: filename without extension".into(),
+        description: "Set the container title to the exact filename without its final extension, matching video track titles.".into(),
+        enabled: true, priority: rules.len() as u32, scope: Scope::Container,
+        conditions: ConditionGroup { mode: MatchMode::All, conditions: vec![], groups: vec![] },
+        actions: vec![Action { property: Property::Title, source: ValueSource::Template, value: json!("{filename_stem}"), missing: MissingValue::SkipTarget }],
+        overwrite: OverwritePolicy::Always, replace_when: None,
+    });
+    rules.push(Rule {
+        id: "standard-video-language".into(),
+        name: "Undefined video language: first audio or English".into(),
+        description: "For unspecified video languages, use the first audio track's language in container order, or en when it is unspecified or there is no audio. Defined video languages are preserved.".into(),
+        enabled: true, priority: rules.len() as u32, scope: Scope::Video,
+        conditions: ConditionGroup { mode: MatchMode::All, conditions: vec![Condition { field: Field::Language, operator: Operator::IsUndefined, value: json!(null), case_sensitive: false }], groups: vec![] },
+        actions: vec![Action { property: Property::Language, source: ValueSource::FirstAudioLanguage, value: json!(null), missing: MissingValue::SkipTarget }],
+        overwrite: OverwritePolicy::WhenUndefined, replace_when: None,
+    });
     RuleLibrary { version: 1, revision: 0, active_profile_id: "general".into(), profiles: vec![Profile {
         id: "general".into(), name: "Tracksmith standard".into(),
-        description: "Editable standard audio/subtitle titles and video track title from filename. Automatically stage on open; always review before saving. Leaves the container title, language codes, flags and track order unchanged. Unknown audio/subtitle formats retain their titles.".into(),
+        description: "Editable standard audio/subtitle titles, container/video titles from filename, and unspecified video language from first audio or en. Automatically stage on open; always review before saving. Leaves audio/subtitle languages, flags and track order unchanged. Unknown audio/subtitle formats retain their titles.".into(),
         rule_ids: rules.iter().map(|r|r.id.clone()).collect(), preferred_languages: vec![], auto_apply: true, overwrite_policy: None,
     }], rules }
 }

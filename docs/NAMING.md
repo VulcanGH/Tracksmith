@@ -1,15 +1,22 @@
 # Tracksmith standard naming
 
-The factory profile contains 32 ordinary, editable rules. It is active on a new
-library and automatically **stages** track titles on open. Saving always
+The factory profile contains 34 ordinary, editable rules. It is active on a new
+library and automatically **stages** metadata changes on open. Saving always
 requires review. Existing saved libraries are never replaced.
+To adopt these defaults in an existing installation, use **Add standard profile**,
+save the library and make that profile active. Custom profiles remain available.
 
-## Video track title
+## Video and container titles
 
 Video tracks stage their title from the exact filename without
 the final extension: `Amélie.2001.1080p.mkv` → `Amélie.2001.1080p`. Punctuation,
-spaces and release details are retained. The container title stays unchanged;
-audio/subtitle tracks do not receive this rule. This is an editable, disableable rule.
+spaces and release details are retained. The container title uses the same value.
+Audio/subtitle tracks do not receive these rules. Both rules can be edited or disabled.
+
+Video language `und` or absent is set from the first audio track in container order,
+including regional tags such as `en-GB`. If that audio track has no defined language,
+or no audio track exists, the fallback is `en`. Later audio tracks are not searched.
+Defined video languages are preserved. This rule does not change audio/subtitle languages.
 
 ## Audio
 
@@ -84,7 +91,7 @@ Qualifier order: Forced, SDH, CC, Commentary, Signs & Songs.
 Forced, hearing-impaired and commentary flags contribute the corresponding labels.
 Existing explicit role labels are also retained; `CC` remains distinct from `SDH`.
 Signs & Songs requires that explicit description; Forced does not imply it.
-Existing flags and language codes are never changed by these naming rules.
+Existing flags and audio/subtitle language codes are never changed by these rules.
 Ambiguous legacy descriptions must be reviewed rather than assumed correct.
 
 ## Customising

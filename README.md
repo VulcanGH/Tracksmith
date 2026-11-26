@@ -58,6 +58,17 @@ a new preview. Saves run serially through the same guarded writer and verificati
 **Stop after current file** allows the active operation to finish. A failed save or verification
 stops the queue; remaining files are explicitly skipped. There is no automatic rollback or retry.
 
+**Clear** resets batch sources, results, searches and selections when no job is running;
+saved Activity reports remain available. **Skip unchanged** is on by default and hides
+confirmed unchanged files without warnings. Errors and warnings remain visible.
+**Search listed files** filters the current results by filename or path without rescanning
+or changing selections; saving includes selected files hidden by search. There is no pagination.
+
+Batch preview reads track metadata with mkvmerge and retains MediaInfo when the selected
+profile uses technical facts (including standard Atmos, codec-profile and channel-layout naming).
+Chapter/tag extraction is deferred to full inspection at save time. The guarded writer and
+post-write verification are unchanged. Every file must still be inspected to classify it as unchanged.
+
 There is no fixed batch file-count cap. Resource limits remain: 32 sources, 100,000 discovery entries, 10,000 folders, 32 nesting levels and
 8 MiB of preview rows. Discovery skips reparse points. Warning summaries are bounded to 8 KiB
 per row; per-file write records retain the detailed save result. **Activity** shows up to 20 recent
@@ -146,10 +157,13 @@ be set. Standard Windows MKVToolNix and MediaInfo DLL installation paths are det
 Use **Rules** to create, enable, duplicate and reorder rules; drag rows or use the priority arrows.
 Structured controls support nested AND/OR matching groups, typed comparisons and bounded regexes,
 title templates with a variable picker, title clearing, language values/fallbacks and supported flags.
-New libraries start with the **Tracksmith standard** profile: 32 editable enabled title
+New libraries start with the **Tracksmith standard** profile: 34 editable enabled
 naming rules, automatically staged on open, with explicit review required before any save.
 Audio uses `Language Codec Layout + Immersive (Role)`; subtitles use `Language (Format, Qualifiers)`.
-The standard changes titles only; it does not alter flags, language codes, the container title or track order. Video track titles use the filename without its final extension.
+Video track and container titles use the filename without its final extension.
+Unspecified video language uses the first audio track's language, or `en` when that
+track has no defined language or no audio exists. Defined video languages, audio/subtitle
+languages, flags and track order are preserved.
 Unknown audio/subtitle formats retain their titles. Channel layouts come from validated technical metadata; count-only
 fallbacks use `8ch`, not an assumed `7.1`. Atmos/DTS:X never come from title text. Regional language
 information is retained and unspecified language displays `Unknown`.
@@ -260,9 +274,12 @@ link libraries. CI uses the standard Windows MSVC toolchain.
 cargo test --locked --lib
 cd frontend
 npm run test:editor
+npm run test:batch
 cd ..
 python scripts/smoke.py target/release/tracksmith.exe
 python scripts/rules_check.py target/release/tracksmith.exe
+python scripts/batch_check.py target/release/tracksmith.exe
+python scripts/batch_check.py target/release/tracksmith.exe --benchmark-files 12
 python scripts/feasibility.py --mkvtoolnix "C:\Program Files\MKVToolNix" --mediainfo-dll "C:\Program Files\MediaInfo\MediaInfo.dll"
 ```
 
@@ -271,6 +288,8 @@ guards, structured command/language handling and browser scope/filtering. Fronte
 cover grouped typing, bulk edits, undo/redo/revert, TSV and proposal/manual separation. The executable smoke
 check covers embedded assets, authenticated status and browser scope/pagination/filter/favourites using
 disposable configuration and empty placeholder files.
+The batch benchmark generates disposable audio fixtures, runs three previews and
+prints their elapsed times without saving media; it does not model large files or network storage.
 The rules checks cover convergence, conflicts, missing/unknown facts, protected manual originals, cycle
 and regex rejection, revision conflicts, and proposal/manual undo behaviour. `rules_check.py` generates
 one short audio fixture and verifies the production rule API leaves its bytes unchanged; it never saves

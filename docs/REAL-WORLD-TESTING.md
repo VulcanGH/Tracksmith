@@ -1,4 +1,4 @@
-# Real-world testing — 1.0.0
+# Real-world testing — 1.0.1
 
 Use copies of a few representative MKV/MKA files first: saves modify originals in
 place. Operation records restore verified metadata values; they are not file backups.
@@ -15,10 +15,13 @@ place. Operation records restore verified metadata values; they are not file bac
 4. Try TrueHD/Atmos, DTS-HD/DTS:X, AAC, mono/stereo and multichannel examples you own.
    Confirm DTS-HD Master Audio is written in full and video track titles match
    the filename without the final extension, retaining punctuation and release details.
+   Confirm container titles use that same filename. Unspecified video language should
+   use the first audio track's language (including regional tags), or `en` when that
+   track is unspecified or absent. Defined video languages should be preserved.
    Compare the staged titles with inspection details and your existing Plex display.
    Check a count-only/unknown layout produces `8ch`, not an assumed `7.1`.
 5. Try SRT, PGS and ASS, including Forced, SDH and named commentary. Confirm qualifiers
-   are retained and language codes/flags, track order and container titles stay
+   are retained and audio/subtitle language codes, flags and track order stay
    unchanged. Report ambiguous legacy titles before accepting them.
 6. Edit one staged title manually, reapply rules, and confirm your override remains.
    Duplicate the standard profile, change one codec template, save/make active and
@@ -26,6 +29,9 @@ place. Operation records restore verified metadata values; they are not file bac
 7. Preview a small batch. Exclude one row, save the reviewed selection, then inspect
    the results and Activity report. Try Stop after current file: the active file must
    finish verification and remaining files must be skipped.
+   Confirm Skip unchanged is checked initially; toggle it to reveal unchanged files.
+   Search by filename/path and confirm selections survive clearing the search.
+   Clear should remove sources and results, leaving saved Activity reports available.
 8. Launch a second copy and confirm it reuses the first instance. Optionally enable
    Explorer/startup integration, test it, then disable it again. Closing the browser
    should leave the tray app running; Exit should finish any active work safely.

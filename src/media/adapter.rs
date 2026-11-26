@@ -13,6 +13,10 @@ pub struct AdapterStatus {
 pub trait ContainerAdapter: Send {
     fn status(&self) -> AdapterStatus;
     fn inspect(&self, path: &Path) -> Result<Inspection>;
+    /// Track-only preview; saving must use a full inspection.
+    fn inspect_batch(&self, path: &Path, _enrich: bool) -> Result<Inspection> {
+        self.inspect(path)
+    }
     fn plan_change(&self, document: &Inspection, edit: Edit) -> Result<Option<Change>>;
     fn validate_plan(&self, document: &Inspection, changes: &[Change]) -> Result<Vec<String>>;
     fn property_value(

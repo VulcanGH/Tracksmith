@@ -113,6 +113,25 @@ impl Compiled {
         self.tick()?;
         match action.source {
             ValueSource::Clear => Ok(Some(Value::Null)),
+            ValueSource::FirstAudioLanguage => {
+                let language = context
+                    .doc
+                    .tracks
+                    .iter()
+                    .position(|track| track.kind == "audio")
+                    .and_then(|index| {
+                        ContextData {
+                            target: Some(index),
+                            ..*context
+                        }
+                        .property(Property::Language)
+                        .value
+                    })
+                    .and_then(|value| value.as_str().map(str::to_owned))
+                    .filter(|language| !language.is_empty() && language != "und")
+                    .unwrap_or_else(|| "en".into());
+                Ok(Some(Value::String(canonical_language(&language)?)))
+            }
             ValueSource::PreferredLanguage => Ok(context
                 .profile
                 .preferred_languages

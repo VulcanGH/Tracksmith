@@ -33,7 +33,7 @@ fn fixture() -> Inspection {
         path: "/media/fixture.mka".into(),
         size_bytes: "100".into(),
         container: "Matroska".into(),
-        title: None,
+        title: Some("fixture".into()),
         editable: vec![Property::Title],
         tracks: vec![track("1", true), track("2", false)],
         attachments: json!([]),
@@ -84,16 +84,94 @@ fn request() -> RulePreviewRequest {
 }
 
 #[test]
+fn video_language_uses_first_audio_then_english_and_preserves_defined_values() {
+    let library = RuleLibrary::default();
+    for (first, second, expected) in [
+        (Some("pt-BR"), Some("en"), "pt-BR"),
+        (Some("und"), Some("fr"), "en"),
+        (None, Some("fr"), "en"),
+    ] {
+        let mut doc = fixture();
+        let mut video = doc.tracks[0].clone();
+        video.uid = "3".into();
+        video.kind = "video".into();
+        video.title = Some("fixture".into());
+        doc.tracks[0].language_ietf = first.map(str::to_owned);
+        doc.tracks[0].language = first.map(str::to_owned);
+        doc.tracks[1].language_ietf = second.map(str::to_owned);
+        doc.tracks.insert(0, video);
+        for existing in [Some("und"), None, Some("de")] {
+            doc.tracks[0].language_ietf = existing.map(str::to_owned);
+            doc.tracks[0].language = existing.map(str::to_owned);
+            let preview = evaluate(&doc, &library, &request()).unwrap();
+            let edit = preview
+                .proposals
+                .iter()
+                .find(|p| p.edit.property == Property::Language);
+            if existing == Some("de") {
+                assert!(edit.is_none());
+            } else {
+                assert_eq!(edit.unwrap().edit.value, json!(expected));
+            }
+        }
+    }
+    let mut doc = fixture();
+    doc.tracks.truncate(1);
+    doc.tracks[0].kind = "video".into();
+    let preview = evaluate(&doc, &library, &request()).unwrap();
+    assert_eq!(
+        preview
+            .proposals
+            .iter()
+            .find(|p| p.edit.property == Property::Language)
+            .unwrap()
+            .edit
+            .value,
+        json!("en")
+    );
+    doc.tracks[0].language_ietf = Some("en".into());
+    doc.tracks[0].title = Some("fixture".into());
+    assert!(
+        evaluate(&doc, &library, &request())
+            .unwrap()
+            .proposals
+            .is_empty()
+    );
+}
+
+#[test]
+fn technical_enrichment_is_retained_for_naming_and_nested_custom_rules() {
+    use super::needs_media_info;
+    let mut library = RuleLibrary::default();
+    assert!(needs_media_info(&library, "general").unwrap());
+    for rule in &mut library.rules {
+        rule.enabled = matches!(rule.scope, Scope::Video | Scope::Container);
+    }
+    assert!(!needs_media_info(&library, "general").unwrap());
+    let rule = library
+        .rules
+        .iter_mut()
+        .find(|r| r.scope == Scope::Video)
+        .unwrap();
+    rule.conditions.groups.push(ConditionGroup {
+        mode: MatchMode::All,
+        conditions: vec![Condition {
+            field: Field::HdrFormat,
+            operator: Operator::Contains,
+            value: json!("Dolby"),
+            case_sensitive: false,
+        }],
+        groups: vec![],
+    });
+    assert!(needs_media_info(&library, "general").unwrap());
+}
+
+#[test]
 fn standard_naming_uses_confirmed_formats_layouts_roles_and_editable_defaults() {
     let library = RuleLibrary::default();
     validate(&library).unwrap();
     assert!(library.profiles[0].auto_apply);
-    assert!(
-        library
-            .rules
-            .iter()
-            .all(|r| r.enabled && r.actions.iter().all(|a| a.property == Property::Title))
-    );
+    assert!(library.rules.iter().all(|r| r.enabled));
     let mut doc = fixture();
     doc.tracks.truncate(1);
     doc.tracks[0].language_ietf = Some("en".into());
@@ -333,11 +411,17 @@ fn standard_naming_uses_confirmed_formats_layouts_roles_and_editable_defaults() 
     doc.tracks[0].kind = "video".into();
     doc.tracks[0].title = Some("Original video track title".into());
     let movie = evaluate(&doc, &library, &request()).unwrap();
-    assert_eq!(movie.proposals.len(), 1);
-    assert_eq!(movie.proposals[0].edit.track_uid.as_deref(), Some("1"));
-    assert_eq!(movie.proposals[0].edit.value, json!("Amélie.2001.1080p"));
+    assert_eq!(movie.proposals.len(), 2);
+    assert!(
+        movie
+            .proposals
+            .iter()
+            .all(|p| p.edit.value == json!("Amélie.2001.1080p"))
+    );
+    assert!(movie.proposals.iter().any(|p| p.edit.track_uid.is_none()));
     assert_eq!(doc.title.as_deref(), Some("Old container title"));
     doc.tracks[0].title = Some("Amélie.2001.1080p".into());
+    doc.title = Some("Amélie.2001.1080p".into());
     assert!(
         evaluate(&doc, &library, &request())
             .unwrap()

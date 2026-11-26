@@ -19,7 +19,13 @@ import urllib.request
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('executable', type=Path)
+    parser.add_argument(
+        '--benchmark-files', type=int,
+        help='Only time three standard-profile previews of N generated files',
+    )
     args = parser.parse_args()
+    if args.benchmark_files is not None and args.benchmark_files < 3:
+        parser.error('--benchmark-files must be at least 3')
     executable = str(args.executable.resolve())
     with tempfile.TemporaryDirectory(prefix='tracksmith-batch-') as directory:
         root = Path(directory)
@@ -32,6 +38,9 @@ def main():
         second, third = media / '2.mka', media / '3.mka'
         shutil.copy2(first, second)
         shutil.copy2(first, third)
+        if args.benchmark_files:
+            for index in range(4, args.benchmark_files + 1):
+                shutil.copy2(first, media / f'{index}.mka')
         original = hashlib.sha256(first.read_bytes()).digest()
         config = root / 'config'
         config.mkdir()
@@ -90,6 +99,72 @@ def main():
             request('desktop/dismiss', {'id': pending[0]['id']})
             assert process.poll() is None and not request('desktop/pending')
             library = request('rules')
+            if args.benchmark_files:
+                durations = []
+                for _ in range(3):
+                    request('batch/preview', {
+                        'sources': [str(media)], 'recursive': False,
+                        'filter': '', 'profile_id': library['active_profile_id'],
+                    })
+                    benchmark = settled()
+                    assert benchmark['phase'] == 'review', benchmark
+                    assert len(benchmark['rows']) == args.benchmark_files
+                    assert all(row['status'] == 'ready'
+                               for row in benchmark['rows']), benchmark
+                    durations.append(benchmark['elapsed_ms'])
+                print(json.dumps({'files': args.benchmark_files,
+                                  'preview_ms': durations}))
+                return
+            # Track-only batch preview must agree with full editor inspection.
+            payload = {'sources': [str(media)], 'recursive': False,
+                       'filter': '', 'profile_id': 'general'}
+            request('batch/preview', payload)
+            standard = settled()
+            assert standard['phase'] == 'review', standard
+            inspected = request('inspect', {'path': str(first)})
+            preview = request('rules/preview', {
+                'inspection_id': inspected['id'], 'profile_id': 'general',
+                'manual_edits': [], 'test_rule': None, 'test_library': None,
+            })
+            plan = request('plans', {
+                'inspection_id': inspected['id'],
+                'edits': [p['edit'] for p in preview['proposals']],
+            })
+            assert standard['rows'][0]['changes'] == plan['changes']
+            request('batch/clear', {})
+            assert not request('batch')['id']
+            request('batch/save', {
+                'job_id': standard['id'],
+                'selected': [standard['rows'][0]['id']],
+            }, 422)
+            video_folder = media / 'video'
+            video_folder.mkdir()
+            movie = video_folder / 'Movie.2026.release.mkv'
+            subprocess.run([
+                shutil.which('ffmpeg'), '-v', 'error', '-f', 'lavfi', '-i',
+                'color=size=16x16:duration=1', '-f', 'lavfi', '-i',
+                'sine=frequency=440:duration=1', '-c:v', 'ffv1', '-c:a',
+                'flac', '-metadata:s:v:0', 'language=und',
+                '-metadata:s:a:0', 'language=fre', str(movie),
+            ], check=True, capture_output=True, timeout=20)
+            request('batch/preview', {**payload, 'sources': [str(movie)]})
+            video_preview = settled()
+            assert video_preview['phase'] == 'review', video_preview
+            request('batch/save', {
+                'job_id': video_preview['id'],
+                'selected': [video_preview['rows'][0]['id']],
+            })
+            video_saved = settled()
+            assert video_saved['rows'][0]['status'] == 'verified', video_saved
+            movie_doc = request('inspect', {'path': str(movie)})
+            assert movie_doc['title'] == movie.stem
+            video_track = next(t for t in movie_doc['tracks']
+                               if t['kind'] == 'video')
+            assert video_track['title'] == movie.stem
+            assert video_track['language_ietf'] == 'fr', video_track
+            request('batch/preview', {**payload, 'sources': [str(movie)]})
+            assert settled()['rows'][0]['status'] == 'unchanged'
+            request('batch/clear', {})
             library['rules'] = [{'id': 'batch-title', 'name': 'Batch title', 'description': '',
                 'enabled': True, 'priority': 0, 'scope': 'audio',
                 'conditions': {'mode': 'all', 'conditions': [], 'groups': []},
@@ -118,6 +193,17 @@ def main():
             assert inspected['tracks'][0]['title'] == 'Batch checked', inspected['tracks'][0]
             history = request('batch/history')
             assert history[0]['id'] == saved['id']
+            library = request('rules')
+            library['rules'][0]['actions'][0]['value'] = 'Batch checked'
+            request('rules', library)
+            request('batch/preview', {**payload, 'sources': [str(first)]})
+            unchanged = settled()
+            assert unchanged['rows'][0]['status'] == 'unchanged', unchanged
+            request('batch/clear', {})
+            assert request('batch/history')[0]['id'] == saved['id']
+            library = request('rules')
+            library['rules'][0]['actions'][0]['value'] = 'Newer library'
+            request('rules', library)
             # Cancel a fresh preview while native inspection is in flight; it must never write.
             untouched = hashlib.sha256(third.read_bytes()).digest()
             request('batch/preview', {**payload, 'sources': [str(third)]})
