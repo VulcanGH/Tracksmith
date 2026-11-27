@@ -14,6 +14,8 @@ pub struct MediaTools {
     pub mkvmerge: Option<PathBuf>,
     pub mkvextract: Option<PathBuf>,
     pub mkvpropedit: Option<PathBuf>,
+    /// Audio technical inspection; an absolute path or automatic discovery.
+    pub ffprobe: Option<PathBuf>,
     /// CLI executable, not the Windows GUI application.
     pub mediainfo: Option<PathBuf>,
     pub mediainfo_dll: Option<PathBuf>,
@@ -68,6 +70,7 @@ impl Config {
             &self.tools.mkvmerge,
             &self.tools.mkvextract,
             &self.tools.mkvpropedit,
+            &self.tools.ffprobe,
             &self.tools.mediainfo,
             &self.tools.mediainfo_dll,
         ]

@@ -19,6 +19,8 @@ import {
 import {
   chooseFile,
   inspectFile,
+  getEnrichment,
+  cancelEnrichment,
   openRecent,
   previewChanges,
   restorePlan,
@@ -82,6 +84,8 @@ export function Editor({
     refetchInterval: active ? 2000 : false,
   });
   const [doc, setDoc] = useState<Inspection>();
+  const currentDoc = useRef(doc);
+  currentDoc.current = doc;
   const [history, dispatch] = useReducer(draftReducer, undefined, emptyDraft);
   const draft = history.present;
   const [plan, setPlan] = useState<Plan>();
@@ -105,6 +109,55 @@ export function Editor({
   const activeProfile = libraryQuery.data?.profiles.find(
     (profile) => profile.id === libraryQuery.data.active_profile_id,
   );
+  const manualSignature = JSON.stringify(history.manual);
+  const ruleContext = useRef("");
+  ruleContext.current = JSON.stringify([doc?.id, doc?.analysis?.status, manualSignature, libraryQuery.data?.revision]);
+  const stagedPhases = useRef(new Set<string>());
+  const autoInspection = useRef<string | undefined>(undefined);
+  const enrichment = useQuery({
+    queryKey: ["enrichment", doc?.id],
+    queryFn: () => getEnrichment(doc!.id),
+    enabled: !!doc && (doc.analysis?.status === "pending" || doc.sections_pending),
+    refetchInterval: (query) => query.state.error ? false : 500,
+    retry: false,
+  });
+  useEffect(() => {
+    const id = doc?.id;
+    return () => { if (id) void cancelEnrichment(id).catch(() => {}); };
+  }, [doc?.id]);
+  useEffect(() => {
+    const next = enrichment.data;
+    if (!next || next.id !== currentDoc.current?.id || next.analysis?.status === "pending" || next.sections_pending) return;
+    setDoc(next);
+    onInspection?.(next);
+  }, [enrichment.data, onInspection]);
+  useEffect(() => {
+    if (!doc || libraryQuery.data?.revision === undefined) return;
+    let cancelled = false;
+    void getEnrichment(doc.id).then((next) => {
+      const current = currentDoc.current;
+      if (cancelled || current?.id !== next.id) return;
+      if (current.analysis?.status !== next.analysis?.status || current.analysis?.scope !== next.analysis?.scope || current.sections_pending !== next.sections_pending) {
+        setDoc(next);
+        onInspection?.(next);
+      }
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [doc?.id, libraryQuery.data?.revision, onInspection]);
+  useEffect(() => {
+    if (!doc || autoInspection.current !== doc.id || !activeProfile?.auto_apply || busy) return;
+    const key = `${doc.id}:${doc.analysis?.status === "pending" ? "container" : "technical"}`;
+    if (stagedPhases.current.has(key)) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      void stageRules(doc, activeProfile.id, Object.values(history.manual), () => !cancelled)
+        .then((applied) => { if (applied) stagedPhases.current.add(key); })
+        .catch((error: unknown) => {
+          if (!cancelled) setError(error instanceof Error ? error.message : "Automatic rules are unavailable");
+        });
+    }, 150);
+    return () => { cancelled = true; window.clearTimeout(timer); };
+  }, [doc?.id, doc?.analysis?.status, manualSignature, libraryQuery.data?.revision, busy]);
   useEffect(() => {
     onManualEdits?.(Object.values(history.manual));
   }, [history.manual, onManualEdits]);
@@ -116,6 +169,7 @@ export function Editor({
       revision !== libraryRevision.current
     ) {
       dispatch({ type: "rules", patches: [] });
+      stagedPhases.current.clear();
       setRuleReport(undefined);
       setPlan(undefined);
     }
@@ -155,6 +209,7 @@ export function Editor({
     dispatch({ type: "apply", patches, group });
   }
   function undo() {
+    autoInspection.current = undefined;
     setRuleReport(undefined);
     setPlan(undefined);
     setError("");
@@ -167,6 +222,8 @@ export function Editor({
     dispatch({ type: "redo" });
   }
   async function showInspection(inspected: Inspection) {
+    autoInspection.current = inspected.id;
+    stagedPhases.current.clear();
     setPath(prettyPath(inspected.path));
     setDoc(inspected);
     dispatch({ type: "reset" });
@@ -177,19 +234,12 @@ export function Editor({
     setRuleReport(undefined);
     onInspection?.(inspected);
     onActivity(
-      `Inspected in ${inspected.elapsed_ms} ms · ${inspected.write_available ? "In-place editing available" : "Read-only"}`,
+      `Tracks loaded in ${inspected.elapsed_ms} ms · ${inspected.write_available ? "In-place editing available" : "Read-only"}`,
     );
     try {
       const library = await getRuleLibrary();
       libraryRevision.current = library.revision;
       queryClient.setQueryData(["rule-library"], library);
-      const profile = library.profiles.find(
-        (profile) => profile.id === library.active_profile_id,
-      );
-      if (profile?.auto_apply) {
-        await stageRules(inspected, profile.id, []);
-        onActivity("Rules staged automatically — review before saving");
-      }
     } catch (error) {
       setError(
         `File inspected; automatic rules are unavailable: ${error instanceof Error ? error.message : "Unknown error"}`,
@@ -200,8 +250,11 @@ export function Editor({
     inspection: Inspection,
     profileId: string,
     manual = Object.values(history.manual),
+    stillCurrent = () => true,
   ) {
+    const context = ruleContext.current;
     const result = await previewRules(inspection.id, profileId, manual);
+    if (!stillCurrent() || currentDoc.current?.id !== inspection.id || context !== ruleContext.current) return false;
     dispatch({
       type: "rules",
       patches: result.proposals.map((proposal) =>
@@ -218,10 +271,11 @@ export function Editor({
     onActivity(
       `${result.proposals.length} rule proposals · ${result.preserved_manual} manual overrides protected`,
     );
+    return true;
   }
   async function applyRules() {
     if (!doc || !activeProfile) return;
-    await run("Evaluating rules…", () => stageRules(doc, activeProfile.id));
+    await run("Evaluating rules…", async () => { await stageRules(doc, activeProfile.id); });
   }
   async function selectProfile(id: string) {
     if (!libraryQuery.data) return;
@@ -576,6 +630,34 @@ export function Editor({
         </div>
       ) : (
         <>
+          <div className="technical-status" role="status" aria-live="polite">
+            {(doc.analysis?.status === "pending" || doc.sections_pending) && !enrichment.error ? (
+              <>
+                <RefreshCw size={14} className="batch-spinner" />
+                {doc.analysis?.status === "pending" ? "Checking technical details… You can edit tracks now; technical names will follow." : "Loading container details… Verified track details are ready to edit."}
+                <Button variant="ghost" disabled={!!busy} onClick={() => {
+                  void run("Stopping technical analysis…", async () => {
+                    const next = await cancelEnrichment(doc.id);
+                    if (currentDoc.current?.id === next.id) { setDoc(next); onInspection?.(next); }
+                  });
+                }}>Stop checking</Button>
+              </>
+            ) : doc.analysis?.status === "failed" || doc.analysis?.status === "partial" || enrichment.error ? (
+              <>
+                Technical details are incomplete. {doc.analysis?.error}
+                <Button variant="ghost" disabled={!!busy} title="Retry with full-file MediaInfo analysis; this can take longer." onClick={() => {
+                  void run("Retrying technical analysis…", async () => {
+                    const next = await getEnrichment(doc.id, true);
+                    queryClient.setQueryData(["enrichment", doc.id], next);
+                    if (currentDoc.current?.id === next.id) { setDoc(next); onInspection?.(next); }
+                  });
+                }}>Retry full analysis</Button>
+              </>
+            ) : (
+              <>Technical details ready{doc.analysis?.cached ? " · reused verified facts" : ""}.</>
+            )}
+            {enrichment.error && <span>{enrichment.error.message}</span>}
+          </div>
           <section className="editor-panel">
             <div className="media-heading">
               <div>
@@ -679,6 +761,7 @@ export function Editor({
                   variant="ghost"
                   disabled={!!busy || !dirty}
                   onClick={() => {
+                    autoInspection.current = undefined;
                     dispatch({ type: "revert" });
                     setRuleReport(undefined);
                     setPlan(undefined);
@@ -737,7 +820,7 @@ export function Editor({
                   >
                     {name}
                     {count !== undefined && (
-                      <span className="tab-count">{count}</span>
+                      <span className="tab-count">{doc.sections_pending && (name === "Chapters" || name === "Tags") ? "…" : count}</span>
                     )}
                   </button>
                 );
@@ -893,24 +976,23 @@ export function Editor({
             </div>
           </section>
           {(doc.warnings.length > 0 ||
-            !doc.chapters.available ||
-            !doc.tags.available) && (
+            (!doc.sections_pending && (!doc.chapters.available || !doc.tags.available))) && (
             <details className="inspection-warnings">
               <summary>
                 Inspection notes (
                 {doc.warnings.length +
-                  Number(!doc.chapters.available) +
-                  Number(!doc.tags.available)}
+                  Number(!doc.sections_pending && !doc.chapters.available) +
+                  Number(!doc.sections_pending && !doc.tags.available)}
                 )
               </summary>
               <ul>
                 {doc.warnings.map((note, index) => (
                   <li key={index}>{note}</li>
                 ))}
-                {!doc.chapters.available && (
+                {!doc.sections_pending && !doc.chapters.available && (
                   <li>Chapters/editions: {doc.chapters.error}</li>
                 )}
-                {!doc.tags.available && <li>Tags: {doc.tags.error}</li>}
+                {!doc.sections_pending && !doc.tags.available && <li>Tags: {doc.tags.error}</li>}
               </ul>
             </details>
           )}

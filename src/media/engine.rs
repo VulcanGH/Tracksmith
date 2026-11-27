@@ -12,6 +12,10 @@ use std::{
     fs,
     io::Write,
     path::{Path, PathBuf},
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
     time::{Duration, Instant},
 };
 
@@ -19,6 +23,89 @@ struct Snapshot {
     document: Inspection,
     identity: Identity,
     created: Instant,
+    analysis_running: bool,
+    cancel: Arc<AtomicBool>,
+}
+impl Drop for Snapshot {
+    fn drop(&mut self) {
+        self.cancel.store(true, Ordering::SeqCst);
+    }
+}
+
+/// An authorised read operation that owns everything needed outside the engine lock.
+pub struct InspectionTask {
+    adapter: Arc<dyn ContainerAdapter>,
+    path: PathBuf,
+    identity: Identity,
+    document: Option<Inspection>,
+    retry: bool,
+    cancel: Arc<AtomicBool>,
+    batch: Option<bool>,
+    full_analysis: bool,
+    technical: bool,
+}
+impl InspectionTask {
+    /// Read tracks once, ahead of the bounded batch enrichment worker.
+    pub(crate) fn identify_batch(
+        &mut self,
+        library: &super::rules::model::RuleLibrary,
+        profile: &str,
+    ) -> Result<()> {
+        self.identity.verify(&self.path)?;
+        let document = self.adapter.inspect_quick(&self.path)?;
+        self.identity.verify(&self.path)?;
+        ensure!(
+            serde_json::to_vec(&document)?.len() <= 8 * 1024 * 1024,
+            "Inspection metadata exceeds the 8 MiB session limit"
+        );
+        let (technical, full) = super::rules::requirements_for(library, profile, &document)?;
+        self.batch = Some(technical);
+        self.full_analysis = full;
+        self.document = Some(document);
+        Ok(())
+    }
+
+    pub(crate) fn cancellation_token(&self) -> Arc<AtomicBool> {
+        self.cancel.clone()
+    }
+    pub fn run(&self) -> Result<Inspection> {
+        ensure!(
+            !self.cancel.load(Ordering::SeqCst),
+            "Inspection was closed or replaced"
+        );
+        self.identity.verify(&self.path)?;
+        let document = if let Some(document) = &self.document {
+            let mut document = document.clone();
+            let technical = if let Some(enrich) = self.batch {
+                enrich
+                    && (document.analysis.status == "pending"
+                        || (self.full_analysis && document.analysis.scope != "full"))
+            } else {
+                self.adapter.complete_sections(&mut document, &self.cancel);
+                self.technical
+            };
+            if technical {
+                self.adapter.complete_analysis(
+                    document,
+                    self.retry || self.full_analysis,
+                    &self.cancel,
+                )?
+            } else {
+                document
+            }
+        } else if let Some(enrich) = self.batch {
+            self.adapter
+                .inspect_batch(&self.path, enrich, self.full_analysis, &self.cancel)?
+        } else {
+            self.adapter.inspect_quick(&self.path)?
+        };
+        self.identity.verify(&self.path)?;
+        ensure!(
+            serde_json::to_vec(&document)?.len() <= 8 * 1024 * 1024,
+            "Inspection metadata exceeds the 8 MiB session limit"
+        );
+        Ok(document)
+    }
 }
 struct Staged {
     plan: Plan,
@@ -30,6 +117,12 @@ pub struct BatchTicket {
     edits: Vec<Edit>,
     pub changes: Vec<Change>,
     pub warnings: Vec<String>,
+    document: Inspection,
+}
+impl BatchTicket {
+    pub fn retained_bytes(&self) -> Result<usize> {
+        Ok(serde_json::to_vec(&self.document)?.len())
+    }
 }
 #[derive(Serialize, Deserialize)]
 struct Record {
@@ -41,13 +134,234 @@ struct Record {
 }
 
 pub struct Engine {
-    adapter: Box<dyn ContainerAdapter>,
+    adapter: Arc<dyn ContainerAdapter>,
     boundary: Boundary,
     config_dir: PathBuf,
     snapshots: HashMap<String, Snapshot>,
     plans: HashMap<String, Staged>,
 }
 impl Engine {
+    fn full_analysis_required(&self) -> bool {
+        self.rule_library()
+            .and_then(|library| {
+                super::rules::needs_full_media_info(&library, &library.active_profile_id)
+            })
+            .unwrap_or(true)
+    }
+    pub fn inspection_task(&self, input: &Path) -> Result<InspectionTask> {
+        let path = self.boundary.authorize(input)?;
+        let technical = self
+            .rule_library()
+            .and_then(|library| {
+                super::rules::needs_media_info(&library, &library.active_profile_id)
+            })
+            .unwrap_or(true);
+        Ok(InspectionTask {
+            identity: Identity::capture(&path)?,
+            path,
+            adapter: self.adapter.clone(),
+            document: None,
+            retry: false,
+            cancel: Arc::new(AtomicBool::new(false)),
+            batch: None,
+            full_analysis: self.full_analysis_required(),
+            technical,
+        })
+    }
+
+    pub fn finish_inspection(
+        &mut self,
+        task: InspectionTask,
+        mut document: Inspection,
+    ) -> Result<Inspection> {
+        self.prune();
+        task.identity
+            .verify(&self.boundary.authorize(&task.path)?)?;
+        let (technical, full) = self
+            .rule_library()
+            .and_then(|library| {
+                super::rules::requirements_for(&library, &library.active_profile_id, &document)
+            })
+            .unwrap_or((true, true));
+        if !technical && document.analysis.status == "pending" {
+            document.analysis.status = "not_requested".into();
+        }
+        if full
+            && document.analysis.scope != "full"
+            && document
+                .tracks
+                .iter()
+                .any(|t| matches!(t.kind.as_str(), "audio" | "video"))
+        {
+            document.analysis.status = "pending".into();
+        }
+        self.store_inspection(document, task.identity, task.cancel)
+    }
+
+    pub fn analysis_task(
+        &mut self,
+        id: &str,
+        retry: bool,
+    ) -> Result<(Inspection, Option<InspectionTask>)> {
+        self.prune();
+        let (technical_required, full_analysis) = self
+            .rule_library()
+            .and_then(|library| {
+                let document = &self
+                    .snapshots
+                    .get(id)
+                    .context("Inspection expired; reopen the file")?
+                    .document;
+                super::rules::requirements_for(&library, &library.active_profile_id, document)
+            })
+            .unwrap_or((true, true));
+        let snapshot = self
+            .snapshots
+            .get_mut(id)
+            .context("Inspection expired; reopen the file")?;
+        let path = self
+            .boundary
+            .authorize(Path::new(&snapshot.document.path))?;
+        if let Err(error) = snapshot.identity.verify(&path) {
+            snapshot.cancel.store(true, Ordering::SeqCst);
+            snapshot.analysis_running = false;
+            let message = format!("File changed during analysis: {error:#}. Reopen the file.");
+            snapshot.document.analysis = TechnicalState {
+                status: "failed".into(),
+                scope: "none".into(),
+                cached: false,
+                error: Some(message.clone()),
+            };
+            snapshot.document.sections_pending = false;
+            if !snapshot.document.warnings.contains(&message) {
+                snapshot.document.warnings.push(message);
+            }
+            return Ok((snapshot.document.clone(), None));
+        }
+        if !snapshot.analysis_running
+            && ((full_analysis && snapshot.document.analysis.scope == "audio")
+                || (technical_required && snapshot.document.analysis.status == "not_requested"))
+        {
+            snapshot.document.analysis.status = "pending".into();
+        }
+        if snapshot.analysis_running
+            || (!retry
+                && snapshot.document.analysis.status != "pending"
+                && !snapshot.document.sections_pending)
+        {
+            return Ok((snapshot.document.clone(), None));
+        }
+        snapshot.analysis_running = true;
+        let technical = retry || snapshot.document.analysis.status == "pending";
+        if technical {
+            snapshot.document.analysis.status = "pending".into();
+        }
+        let task = InspectionTask {
+            adapter: self.adapter.clone(),
+            identity: Identity::capture(&path)?,
+            path,
+            document: Some(snapshot.document.clone()),
+            retry: retry || full_analysis,
+            cancel: snapshot.cancel.clone(),
+            batch: None,
+            full_analysis,
+            technical,
+        };
+        Ok((snapshot.document.clone(), Some(task)))
+    }
+
+    pub fn finish_analysis(&mut self, task: InspectionTask, result: Result<Inspection>) {
+        let Some(id) = task.document.as_ref().map(|d| &d.id) else {
+            return;
+        };
+        let Some(snapshot) = self.snapshots.get_mut(id) else {
+            return;
+        };
+        if !Arc::ptr_eq(&snapshot.cancel, &task.cancel) {
+            return;
+        }
+        snapshot.analysis_running = false;
+        let result = result.and_then(|document| {
+            task.identity
+                .verify(&self.boundary.authorize(&task.path)?)?;
+            snapshot.identity.verify(&task.path)?;
+            Ok(document)
+        });
+        match result {
+            Ok(mut document) => {
+                if snapshot.document.chapters.available && !document.chapters.available {
+                    document.chapters = snapshot.document.chapters.clone();
+                }
+                if snapshot.document.tags.available && !document.tags.available {
+                    document.tags = snapshot.document.tags.clone();
+                }
+                snapshot.document = document;
+            }
+            Err(error) => {
+                let message = format!(
+                    "Technical analysis unavailable: {error:#}. Reopen the file before retrying."
+                );
+                snapshot.document.analysis = TechnicalState {
+                    status: "failed".into(),
+                    scope: "none".into(),
+                    cached: false,
+                    error: Some(message.clone()),
+                };
+                snapshot.document.sections_pending = false;
+                snapshot.document.warnings.push(message);
+            }
+        }
+    }
+
+    pub fn cancel_analysis(&mut self, id: &str) -> Result<Inspection> {
+        let snapshot = self.snapshots.get_mut(id).context("Inspection expired")?;
+        if snapshot.analysis_running
+            || snapshot.document.analysis.status == "pending"
+            || snapshot.document.sections_pending
+        {
+            snapshot.cancel.store(true, Ordering::SeqCst);
+            snapshot.cancel = Arc::new(AtomicBool::new(false));
+            snapshot.analysis_running = false;
+            snapshot.document.sections_pending = false;
+            snapshot.document.analysis.status = if snapshot.document.mediainfo.is_some() {
+                "partial"
+            } else {
+                "failed"
+            }
+            .into();
+            snapshot.document.analysis.error =
+                Some("Technical analysis stopped; retry when needed.".into());
+            for section in [&mut snapshot.document.chapters, &mut snapshot.document.tags] {
+                if !section.available {
+                    section.error = Some("Loading stopped; retry to inspect".into());
+                }
+            }
+        }
+        Ok(snapshot.document.clone())
+    }
+
+    pub fn cancel_all_analysis(&mut self) {
+        for snapshot in self.snapshots.values() {
+            snapshot.cancel.store(true, Ordering::SeqCst);
+        }
+    }
+
+    pub fn fail_analysis(&mut self, id: &str, generation: &Arc<AtomicBool>, message: String) {
+        if let Some(snapshot) = self.snapshots.get_mut(id)
+            && Arc::ptr_eq(generation, &snapshot.cancel)
+        {
+            snapshot.analysis_running = false;
+            snapshot.document.analysis.status = "failed".into();
+            snapshot.document.sections_pending = false;
+            snapshot.document.analysis.error = Some(message);
+        }
+    }
+
+    pub fn selected_inspection_task(&mut self, path: &Path) -> Result<InspectionTask> {
+        let canonical = self.boundary.grant_selected_file(path)?;
+        self.inspection_task(&canonical)
+    }
+
     pub(crate) fn grant_batch_file(&mut self, path: &Path) -> Result<String> {
         Ok(self
             .boundary
@@ -143,19 +457,38 @@ impl Engine {
             })
             .collect())
     }
-    pub fn prepare_batch(
-        &mut self,
+    pub fn batch_inspection_task(
+        &self,
         path: &Path,
+        enrich: bool,
+        full: bool,
+    ) -> Result<InspectionTask> {
+        let path = self.boundary.authorize(path)?;
+        Ok(InspectionTask {
+            identity: Identity::capture(&path)?,
+            path,
+            adapter: self.adapter.clone(),
+            document: None,
+            retry: false,
+            cancel: Arc::new(AtomicBool::new(false)),
+            batch: Some(enrich),
+            full_analysis: full,
+            technical: false,
+        })
+    }
+
+    pub fn review_batch(
+        &mut self,
+        task: InspectionTask,
+        document: Inspection,
         library: &super::rules::model::RuleLibrary,
         profile_id: &str,
     ) -> Result<BatchTicket> {
-        let path = self.boundary.authorize(path)?;
-        let identity = Identity::capture(&path)?;
+        let path = self.boundary.authorize(&task.path)?;
+        task.identity.verify(&path)?;
+        let identity = task.identity;
         let started = Instant::now();
-        let document = self
-            .adapter
-            .inspect_batch(&path, super::rules::needs_media_info(library, profile_id)?)?;
-        let inspection_ms = started.elapsed().as_millis();
+        let inspection_ms = document.elapsed_ms;
         ensure!(
             document.write_available,
             "Writing is unavailable for this file"
@@ -187,7 +520,7 @@ impl Engine {
         identity.verify(&self.boundary.authorize(&path)?)?;
         tracing::debug!(
             inspection_ms,
-            planning_ms = started.elapsed().as_millis() - inspection_ms,
+            planning_ms = started.elapsed().as_millis(),
             "Batch file prepared"
         );
         Ok(BatchTicket {
@@ -196,16 +529,24 @@ impl Engine {
             edits,
             changes,
             warnings,
+            document,
         })
     }
     pub fn commit_batch(&mut self, ticket: BatchTicket) -> Result<SaveReport> {
         ticket
             .identity
             .verify(&self.boundary.authorize(&ticket.path)?)?;
-        let document = self.inspect(&ticket.path)?;
+        let mut document = self.adapter.inspect_verification(&ticket.path)?;
         ticket
             .identity
             .verify(&self.boundary.authorize(&ticket.path)?)?;
+        self.adapter
+            .retain_technical(&ticket.document, &mut document);
+        let document = self.store_inspection(
+            document,
+            Identity::capture(&ticket.path)?,
+            Arc::new(AtomicBool::new(false)),
+        )?;
         let plan = self.plan(&document.id, ticket.edits)?;
         ensure!(
             serde_json::to_vec(&plan.changes)? == serde_json::to_vec(&ticket.changes)?,
@@ -214,7 +555,7 @@ impl Engine {
         self.save(&plan.id)
     }
     pub fn new(config: &Config, config_dir: PathBuf) -> Result<Self> {
-        let mut adapter = Matroska::new(&config.tools);
+        let mut adapter = Matroska::new(&config.tools, &config_dir);
         let mut available_roots = vec![];
         for root in &config.media_roots {
             match Boundary::new(std::slice::from_ref(root)) {
@@ -226,7 +567,7 @@ impl Engine {
             }
         }
         Ok(Self {
-            adapter: Box::new(adapter),
+            adapter: Arc::new(adapter),
             boundary: Boundary::new(&available_roots)?,
             config_dir,
             snapshots: HashMap::new(),
@@ -271,13 +612,23 @@ impl Engine {
         self.prune();
         let path = self.boundary.authorize(input)?;
         let identity = Identity::capture(&path)?;
-        let mut document = self.adapter.inspect(&path)?;
+        let document = self.adapter.inspect_quick(&path)?;
+        identity.verify(&self.boundary.authorize(&path)?)?;
+        self.store_inspection(document, identity, Arc::new(AtomicBool::new(false)))
+    }
+    fn store_inspection(
+        &mut self,
+        mut document: Inspection,
+        identity: Identity,
+        cancel: Arc<AtomicBool>,
+    ) -> Result<Inspection> {
+        let path = Path::new(&document.path);
         ensure!(
             serde_json::to_vec(&document)?.len() <= 8 * 1024 * 1024,
             "Inspection metadata exceeds the 8 MiB session limit"
         );
-        identity.verify(&self.boundary.authorize(&path)?)?;
-        if let Err(error) = self.remember(&path, false) {
+        identity.verify(&self.boundary.authorize(path)?)?;
+        if let Err(error) = self.remember(path, false) {
             document
                 .warnings
                 .push(format!("Recent-file history could not be saved: {error:#}"));
@@ -297,13 +648,11 @@ impl Engine {
                 document: document.clone(),
                 identity,
                 created: Instant::now(),
+                analysis_running: false,
+                cancel,
             },
         );
         Ok(document)
-    }
-    pub(crate) fn open_selected_file(&mut self, path: &Path) -> Result<Inspection> {
-        let canonical = self.boundary.grant_selected_file(path)?;
-        self.inspect(&canonical)
     }
     fn remember(&self, path: &Path, folder: bool) -> Result<()> {
         let mut config = Config::load(&self.config_dir)?;
@@ -347,7 +696,7 @@ impl Engine {
         self.remember(&canonical, true)?;
         self.browse_directory(Some(&canonical), 0, "")
     }
-    pub fn open_recent_file(&mut self, path: &Path) -> Result<Inspection> {
+    pub fn recent_inspection_task(&mut self, path: &Path) -> Result<InspectionTask> {
         ensure!(
             Config::load(&self.config_dir)?
                 .recent_files
@@ -355,7 +704,7 @@ impl Engine {
                 .any(|file| file == path),
             "File is not in Tracksmith's recent-file history; use Open file"
         );
-        self.open_selected_file(path)
+        self.selected_inspection_task(path)
     }
     pub fn open_recent_location(&mut self, path: &Path) -> Result<DirectoryListing> {
         let config = Config::load(&self.config_dir)?;
@@ -558,10 +907,15 @@ impl Engine {
             .context("Plan expired or was already used; preview the changes again")?
             .plan;
         ensure!(!plan.changes.is_empty(), "There are no changes to save");
+        self.capture_write_sections(&plan.inspection_id)?;
         let snapshot = self
             .snapshots
             .get(&plan.inspection_id)
             .context("Inspection expired; reopen the file")?;
+        ensure!(
+            snapshot.document.write_available,
+            "Writing is unavailable; refresh the metadata before saving"
+        );
         let path = self.boundary.authorize(Path::new(&plan.path))?;
         let _operation = snapshot.identity.lock_operation()?;
         let _file_guard = hold_file_identity(&path)?;
@@ -621,12 +975,23 @@ impl Engine {
         match self
             .boundary
             .authorize(&path)
-            .and_then(|authorized| self.adapter.inspect(&authorized))
+            .and_then(|authorized| self.adapter.inspect_verification(&authorized))
         {
-            Ok(after) => {
+            Ok(mut after) => {
                 report
                     .discrepancies
                     .extend(self.adapter.verify(&original, &after, &plan.changes));
+                if clean_exit && report.discrepancies.is_empty() {
+                    self.adapter.retain_technical(&original, &mut after);
+                }
+                if after.mediainfo.is_none()
+                    && after
+                        .tracks
+                        .iter()
+                        .any(|t| matches!(t.kind.as_str(), "audio" | "video"))
+                {
+                    after.analysis.status = "pending".into();
+                }
                 report.inspection = Some(after);
             }
             Err(error) => report
@@ -657,6 +1022,8 @@ impl Engine {
                     document: document.clone(),
                     identity,
                     created: Instant::now(),
+                    analysis_running: false,
+                    cancel: Arc::new(AtomicBool::new(false)),
                 },
             );
         }
@@ -676,6 +1043,27 @@ impl Engine {
         temp.write_all(b"\n")?;
         temp.as_file().sync_all()?;
         temp.persist(folder.join(format!("{}.json", record.id)))?;
+        Ok(())
+    }
+
+    fn capture_write_sections(&mut self, id: &str) -> Result<()> {
+        let snapshot = self.snapshots.get(id).context("Inspection expired")?;
+        if snapshot.document.chapters.available && snapshot.document.tags.available {
+            return Ok(());
+        }
+        let path = self
+            .boundary
+            .authorize(Path::new(&snapshot.document.path))?;
+        snapshot.identity.verify(&path)?;
+        let mut document = snapshot.document.clone();
+        self.adapter
+            .complete_sections(&mut document, &AtomicBool::new(false));
+        snapshot.identity.verify(&self.boundary.authorize(&path)?)?;
+        ensure!(
+            document.write_available,
+            "Chapter/tag preservation metadata unavailable; no write was started"
+        );
+        self.snapshots.get_mut(id).unwrap().document = document;
         Ok(())
     }
 }

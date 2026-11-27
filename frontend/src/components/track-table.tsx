@@ -443,7 +443,7 @@ export function TrackTable({
                       <div className="expanded-heading">
                         <code>UID {track.uid}</code>
                         <span>
-                          mkvmerge ID {track.id} · MediaInfo:{" "}
+                          mkvmerge ID {track.id} · Technical mapping:{" "}
                           {track.mapping === "uid_number_type_verified"
                             ? "verified mapping"
                             : "unconfirmed mapping"}

@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.0.3
+
+### Faster metadata loading and reuse
+
+- Use FFprobe for routine audio facts and skip technical tools entirely for
+  container/subtitle-only rules. Keep MediaInfo for full-file/video requirements,
+  explicit retries and a visible compatibility path if FFprobe is unavailable.
+- Bind audio streams through validated Matroska packet boundaries and track
+  numbers, including otherwise identical tracks. Add checksum-verified native
+  TrueHD header checks for later Atmos signalling and corrected channel layouts.
+- Deepen audio-frame inspection only for missing layouts or conflicting E-AC-3
+  channel counts. Unresolved facts preserve names instead of silently running
+  MediaInfo; retain existing JOC/Atmos, DTS:X and codec-profile naming.
+- Load editable tracks before background technical analysis completes. Show
+  progress and a retry action for incomplete technical details.
+- Release the media engine lock during identification and enrichment, including
+  batch analysis. Keep the isolated MediaInfo DLL worker and its normal parsing
+  depth; bound slow full-file analysis before trying an audio-only sample.
+- Cache verified technical facts in memory and across restarts. Invalidate them
+  when a file changes or is replaced, or the provider/settings change.
+- Reuse reviewed facts through batch saving and verified metadata-only edits.
+  Keep fresh MKV identification, chapter/tag preservation and all writer checks.
+- List discovered batch files immediately with queued, track-reading and technical
+  checking states. Read ahead of the single analysis worker without repeating
+  identification. Keep pending files visible and unavailable for saving.
+- Retain up to 4,096 cached files within a 128 MiB disk limit so scans of large
+  libraries can reuse earlier results; keep the memory cache limited to 64 files.
+- Enable **Subfolders** by default when adding folders to a batch. It can still
+  be unchecked before previewing.
+
+### Accurate naming and preserved edits
+
+- Hold technical naming until its track facts are verified. Keep manual edits,
+  undo history and selection when background results arrive, and discard stale
+  analysis after a file changes or its inspection is replaced.
+- Preserve existing Atmos/DTS:X titles when detection conflicts, with a note
+  for manual review. A short probe's missing immersive flag is inconclusive.
+- Treat MediaInfo's DTS:X `Objects` marker as metadata rather than an additional
+  physical channel when formatting a verified bed layout.
+
 ## 1.0.2
 
 ### Clearer batch progress

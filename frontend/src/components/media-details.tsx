@@ -45,8 +45,8 @@ export function trackDetails(track: Track) {
       .join(" · ");
   if (track.kind === "audio")
     return [
-      field(mi, "Format_Commercial") || field(mi, "Format_AdditionalFeatures"),
-      `${field(track.technical, "audio_channels") || "?"} ch`,
+      field(mi, "Format_Commercial_IfAny") || field(mi, "Format_Commercial") || field(mi, "Format_AdditionalFeatures"),
+      `${field(mi, "Channels") || field(track.technical, "audio_channels") || "?"} ch`,
     ]
       .filter(Boolean)
       .join(" · ");
@@ -120,12 +120,12 @@ export function TrackTechnical({ track }: { track: Track }) {
           <PropertyList value={track.technical} />
         </details>
         <details>
-          <summary>All MediaInfo properties</summary>
+          <summary>All technical properties</summary>
           {track.mediainfo ? (
             <PropertyList value={track.mediainfo} />
           ) : (
             <p className="muted">
-              Mapping unconfirmed. Raw MediaInfo remains under Container
+              Mapping unconfirmed. Raw technical data remains under Container
               information.
             </p>
           )}
@@ -230,7 +230,7 @@ export function ContainerSection({
           <pre>{JSON.stringify(doc.identification, null, 2)}</pre>
         </details>
         <details>
-          <summary>All MediaInfo data</summary>
+          <summary>All technical data</summary>
           <pre>{JSON.stringify(doc.mediainfo, null, 2)}</pre>
         </details>
       </div>

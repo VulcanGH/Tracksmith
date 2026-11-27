@@ -228,6 +228,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/enrichment": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["enrichment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/favourite": {
         parameters: {
             query?: never;
@@ -641,6 +657,11 @@ export interface components {
             roots: string[];
             writing_available: boolean;
         };
+        EnrichmentRequest: {
+            cancel?: boolean;
+            id: string;
+            retry?: boolean;
+        };
         FavouriteRequest: {
             favourite: boolean;
             path: string;
@@ -657,6 +678,7 @@ export interface components {
             id: string;
         };
         Inspection: {
+            analysis?: components["schemas"]["TechnicalState"];
             attachments: unknown;
             chapters: components["schemas"]["MetadataSection"];
             container: string;
@@ -669,6 +691,7 @@ export interface components {
             identification: unknown;
             mediainfo?: unknown;
             path: string;
+            sections_pending?: boolean;
             size_bytes: string;
             tags: components["schemas"]["MetadataSection"];
             title?: string | null;
@@ -818,6 +841,14 @@ export interface components {
             name: string;
             phase: string;
             version: string;
+        };
+        TechnicalState: {
+            cached: boolean;
+            error?: string | null;
+            /** @description full, audio, audio_sample, or none. */
+            scope: string;
+            /** @description pending, ready, partial, failed, or not_requested. */
+            status: string;
         };
         TemplateVariable: {
             label: string;
@@ -1210,6 +1241,29 @@ export interface operations {
                 };
                 content: {
                     "text/plain": boolean;
+                };
+            };
+        };
+    };
+    enrichment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EnrichmentRequest"];
+            };
+        };
+        responses: {
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Inspection"];
                 };
             };
         };

@@ -74,7 +74,7 @@ export function RulesPage({
   const fileInput = useRef<HTMLInputElement>(null);
   const dragged = useRef("");
   const context = useRef("");
-  context.current = JSON.stringify([doc?.id, manualEdits, library?.revision]);
+  context.current = JSON.stringify([doc?.id, doc?.analysis?.status, manualEdits, library?.revision]);
   useEffect(() => {
     if (query.data && !dirty) {
       setLibrary(structuredClone(query.data));
@@ -97,7 +97,7 @@ export function RulesPage({
     window.addEventListener("beforeunload", leaving);
     return () => window.removeEventListener("beforeunload", leaving);
   }, [dirty]);
-  useEffect(() => setResult(undefined), [doc?.id, manualEdits]);
+  useEffect(() => setResult(undefined), [doc?.id, doc?.analysis?.status, manualEdits]);
   async function run(task: () => Promise<void>) {
     if (running.current) return;
     running.current = true;

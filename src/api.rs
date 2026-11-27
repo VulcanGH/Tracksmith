@@ -22,6 +22,7 @@ pub struct AppState {
     pub batch: Arc<crate::batch::Batch>,
     pub desktop: Arc<crate::lifecycle::Desktop>,
     pub updates: Arc<crate::update::Updater>,
+    pub analysis_slots: Arc<tokio::sync::Semaphore>,
 }
 #[derive(Serialize, ToSchema)]
 pub struct Status {
@@ -93,6 +94,86 @@ pub struct LocationsRequest {
 #[serde(deny_unknown_fields)]
 pub struct IdRequest {
     pub id: String,
+}
+
+#[derive(Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct EnrichmentRequest {
+    pub id: String,
+    #[serde(default)]
+    pub retry: bool,
+    #[serde(default)]
+    pub cancel: bool,
+}
+
+async fn finish_open(
+    state: Arc<AppState>,
+    task: crate::media::InspectionTask,
+) -> Result<Json<Inspection>, ApiError> {
+    let (task, result) = tokio::task::spawn_blocking(move || {
+        let result = task.run();
+        (task, result)
+    })
+    .await
+    .map_err(|_| failure(anyhow::anyhow!("Inspection worker failed")))?;
+    let document = result.map_err(failure)?;
+    execute(state, move |engine| {
+        engine.finish_inspection(task, document)
+    })
+    .await
+}
+
+#[utoipa::path(post, path="/api/enrichment", request_body=EnrichmentRequest, responses((status=200,body=Inspection)))]
+async fn enrichment(
+    State(state): State<Arc<AppState>>,
+    Json(input): Json<EnrichmentRequest>,
+) -> Result<Json<Inspection>, ApiError> {
+    let engine = state.engine.clone();
+    let (document, task) = tokio::task::spawn_blocking(move || {
+        let mut engine = engine
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Media engine unavailable"))?;
+        if input.cancel {
+            engine.cancel_analysis(&input.id).map(|doc| (doc, None))
+        } else {
+            engine.analysis_task(&input.id, input.retry)
+        }
+    })
+    .await
+    .map_err(|_| failure(anyhow::anyhow!("Technical status worker failed")))?
+    .map_err(failure)?;
+    if let Some(task) = task {
+        let id = document.id.clone();
+        let generation = task.cancellation_token();
+        tokio::spawn(async move {
+            let Ok(_slot) = state.analysis_slots.clone().acquire_owned().await else {
+                return;
+            };
+            let failure_engine = state.engine.clone();
+            if let Err(error) = tokio::task::spawn_blocking(move || {
+                let result = task.run();
+                match state.engine.lock() {
+                    Ok(mut engine) => engine.finish_analysis(task, result),
+                    Err(error) => tracing::error!(%error, "Could not attach technical analysis"),
+                }
+            })
+            .await
+            {
+                tracing::error!(%error, "Technical analysis worker failed");
+                let _ = tokio::task::spawn_blocking(move || {
+                    if let Ok(mut engine) = failure_engine.lock() {
+                        engine.fail_analysis(
+                            &id,
+                            &generation,
+                            "Technical worker failed; retry analysis.".into(),
+                        );
+                    }
+                })
+                .await;
+            }
+        });
+    }
+    Ok(Json(document))
 }
 #[utoipa::path(get,path="/api/updates",responses((status=200,body=crate::update::UpdateStatus)))]
 async fn update_status(State(state): State<Arc<AppState>>) -> Json<crate::update::UpdateStatus> {
@@ -302,12 +383,15 @@ async fn desktop_open(
         });
     }
     let desktop = state.desktop.clone();
-    execute(state, move |e| {
-        let doc = e.open_selected_file(Path::new(&item.path))?;
-        desktop.dismiss(&item.id);
-        Ok(doc)
+    let id = item.id.clone();
+    let task = execute(state.clone(), move |e| {
+        e.selected_inspection_task(Path::new(&item.path))
     })
-    .await
+    .await?
+    .0;
+    let result = finish_open(state, task).await?;
+    desktop.dismiss(&id);
+    Ok(result)
 }
 #[utoipa::path(post, path="/api/desktop/folder", request_body=IdRequest, responses((status=200,body=DirectoryListing)))]
 async fn desktop_folder(
@@ -356,6 +440,12 @@ async fn desktop_configure(
 }
 #[utoipa::path(post, path="/api/desktop/stop", responses((status=200,body=bool)))]
 async fn desktop_stop(State(state): State<Arc<AppState>>) -> Json<bool> {
+    let engine = state.engine.clone();
+    tokio::task::spawn_blocking(move || {
+        if let Ok(mut engine) = engine.lock() {
+            engine.cancel_all_analysis();
+        }
+    });
     state
         .batch
         .cancel
@@ -472,20 +562,32 @@ async fn inspect(
     State(state): State<Arc<AppState>>,
     Json(input): Json<OpenRequest>,
 ) -> Result<Json<Inspection>, ApiError> {
-    execute(state, move |engine| engine.inspect(Path::new(&input.path))).await
+    let task = execute(state.clone(), move |engine| {
+        engine.inspection_task(Path::new(&input.path))
+    })
+    .await?
+    .0;
+    finish_open(state, task).await
 }
 #[utoipa::path(post, path = "/api/pick-file", request_body = PickerRequest, responses((status = 200, body = Option<Inspection>), (status = 422, body = ApiError)), security(("session_token" = [])))]
 async fn pick_file(
     State(state): State<Arc<AppState>>,
     Json(input): Json<PickerRequest>,
 ) -> Result<Json<Option<Inspection>>, ApiError> {
-    execute(state, move |engine| {
+    let task = execute(state.clone(), move |engine| {
         let Some(path) = crate::desktop::pick_media_file(&input.marker)? else {
             return Ok(None);
         };
-        engine.open_selected_file(&path).map(Some)
+        engine.selected_inspection_task(&path).map(Some)
     })
-    .await
+    .await?
+    .0;
+    match task {
+        Some(task) => finish_open(state, task)
+            .await
+            .map(|Json(doc)| Json(Some(doc))),
+        None => Ok(Json(None)),
+    }
 }
 #[utoipa::path(post, path = "/api/browser", request_body = BrowserRequest, responses((status = 200, body = DirectoryListing), (status = 422, body = ApiError)), security(("session_token" = [])))]
 async fn browse(
@@ -519,10 +621,12 @@ async fn open_recent(
     State(state): State<Arc<AppState>>,
     Json(input): Json<OpenRequest>,
 ) -> Result<Json<Inspection>, ApiError> {
-    execute(state, move |engine| {
-        engine.open_recent_file(Path::new(&input.path))
+    let task = execute(state.clone(), move |engine| {
+        engine.recent_inspection_task(Path::new(&input.path))
     })
-    .await
+    .await?
+    .0;
+    finish_open(state, task).await
 }
 #[utoipa::path(post, path = "/api/open-location", request_body = OpenRequest, responses((status = 200, body = DirectoryListing), (status = 422, body = ApiError)), security(("session_token" = [])))]
 async fn open_location(
@@ -589,7 +693,7 @@ async fn locations(
 }
 
 #[derive(OpenApi)]
-#[openapi(paths(status, inspect, pick_file, browse, pick_folder, open_recent, open_location, favourite, plan, save, restore, locations, rule_library, standard_rules, save_rule_library, validate_rule_library, rule_catalog, rule_preview, batch_status, batch_clear, batch_preview, batch_save, batch_cancel, batch_history, batch_pick_file, desktop_pending, desktop_open, desktop_folder, desktop_dismiss, desktop_settings, desktop_configure, desktop_stop, update_status, update_check, update_install), components(schemas(Status, ApiError)), modifiers(&SecurityScheme))]
+#[openapi(paths(status, inspect, enrichment, pick_file, browse, pick_folder, open_recent, open_location, favourite, plan, save, restore, locations, rule_library, standard_rules, save_rule_library, validate_rule_library, rule_catalog, rule_preview, batch_status, batch_clear, batch_preview, batch_save, batch_cancel, batch_history, batch_pick_file, desktop_pending, desktop_open, desktop_folder, desktop_dismiss, desktop_settings, desktop_configure, desktop_stop, update_status, update_check, update_install), components(schemas(Status, ApiError)), modifiers(&SecurityScheme))]
 pub struct ApiDoc;
 struct SecurityScheme;
 impl utoipa::Modify for SecurityScheme {
@@ -630,6 +734,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route("/api/desktop/stop", post(desktop_stop))
         .route("/api/inspect", post(inspect))
+        .route("/api/enrichment", post(enrichment))
         .route("/api/pick-file", post(pick_file))
         .route("/api/browser", post(browse))
         .route("/api/pick-folder", post(pick_folder))

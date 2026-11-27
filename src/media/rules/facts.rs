@@ -234,7 +234,7 @@ impl ContextData<'_> {
                 (!values.is_empty()).then(|| json!(values.join(" · ")))
             }
             Field::ChannelCount => {
-                numeric(technical(track, "audio_channels").or_else(|| mi(track, "Channels")))
+                numeric(mi(track, "Channels").or_else(|| technical(track, "audio_channels")))
             }
             Field::ChannelLayout => mi(track, "ChannelLayout"),
             Field::Bitrate => numeric(mi(track, "BitRate")),

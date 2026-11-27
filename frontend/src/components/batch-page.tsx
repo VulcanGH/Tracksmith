@@ -43,7 +43,7 @@ export function BatchPage({ active }: { active: boolean }) {
   });
   const [sources, setSources] = useState<string[]>([]);
   const [profile, setProfile] = useState("");
-  const [recursive, setRecursive] = useState(false);
+  const [recursive, setRecursive] = useState(true);
   const [filter, setFilter] = useState("");
   const [search, setSearch] = useState("");
   const [skipUnchanged, setSkipUnchanged] = useState(true);
@@ -202,9 +202,10 @@ export function BatchPage({ active }: { active: boolean }) {
         </div>
       ))}
       <p className="muted">
-        Files are processed one at a time. Preview uses a fixed profile
-        revision. Writes modify originals in place; metadata records are not
-        file backups.
+        Files appear before checks finish. Track reading can run ahead of
+        technical analysis; saving remains one file at a time. Preview uses a
+        fixed profile revision. Writes modify originals in place; metadata
+        records are not file backups.
       </p>
       {error && (
         <p role="alert" className="error-message">
@@ -338,6 +339,9 @@ function BatchResultRow({
   toggle?: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const checking = ["queued", "reading", "analysing"].includes(row.status);
+  const labels: Record<string, string> = { queued: "Queued", reading: "Reading tracks…", analysing: "Checking technical details…" };
+  const status = labels[row.status] ?? row.status;
   return (
     <details
       className="batch-row"
@@ -353,10 +357,10 @@ function BatchResultRow({
             onChange={() => toggle(row.id)}
           />
         )}
-        <span className="batch-status">{row.status}</span>
+        <span className="batch-status">{checking && <LoaderCircle className="batch-spinner" size={14} aria-hidden="true" />} {status}</span>
         <span title={row.path}>{prettyPath(row.path)}</span>
         <span className="muted">
-          {row.changes.length} changes
+          {checking ? "Not ready to save" : `${row.changes.length} changes`}
           {row.warnings.length > 0 && ` · ${row.warnings.length} warnings`}
         </span>
       </summary>

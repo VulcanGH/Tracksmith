@@ -131,10 +131,10 @@ impl Batch {
         tokio::task::spawn_blocking(move || {
             let started = Instant::now();
             let result = (|| -> Result<()> {
-                let mut engine = engine
+                let guard = engine
                     .lock()
                     .map_err(|_| anyhow::anyhow!("Media engine unavailable"))?;
-                let library = engine.rule_library()?;
+                let library = guard.rule_library()?;
                 let profile = library
                     .profiles
                     .iter()
@@ -144,57 +144,139 @@ impl Batch {
                     j.view.profile = profile.name.clone();
                     j.view.revision = library.revision;
                 });
-                let paths = engine.batch_paths(
+                let paths = guard.batch_paths(
                     &request.sources,
                     request.recursive,
                     &request.filter,
                     &batch.cancel,
                 )?;
-                batch.update(|j| j.view.total_files = Some(paths.len()));
+                drop(guard);
                 let mut retained = 0;
-                for path in paths {
-                    if batch.cancel.load(Ordering::SeqCst) {
-                        break;
-                    }
-                    batch.update(|j| j.view.current = path.display().to_string());
-                    let id = uuid::Uuid::new_v4().to_string();
-                    let mut row = BatchRow {
-                        id: id.clone(),
+                let mut rows = Vec::with_capacity(paths.len());
+                let mut row_bytes = Vec::with_capacity(paths.len());
+                for path in &paths {
+                    let row = BatchRow {
+                        id: uuid::Uuid::new_v4().to_string(),
                         path: path.display().to_string(),
-                        status: "error".into(),
+                        status: "queued".into(),
                         changes: vec![],
                         warnings: vec![],
                         operation_id: None,
                     };
-                    match engine.prepare_batch(&path, &library, &request.profile_id) {
-                        Ok(ticket) => {
-                            row.status = if ticket.changes.is_empty() {
-                                "unchanged"
-                            } else {
-                                "ready"
-                            }
-                            .into();
-                            row.changes = ticket.changes.clone();
-                            row.warnings = ticket.warnings.clone();
-                            if !ticket.changes.is_empty() {
-                                batch.update(|j| {
-                                    j.tickets.insert(id, ticket);
-                                });
-                            }
-                        }
-                        Err(error) => row.warnings.push(format!("{error:#}")),
-                    }
-                    bound_warnings(&mut row.warnings);
-                    retained += serde_json::to_vec(&row)?.len();
+                    let bytes = serde_json::to_vec(&row)?.len();
+                    row_bytes.push(bytes);
+                    retained += bytes;
                     ensure!(
                         retained <= 8 * 1024 * 1024,
                         "Batch review exceeds 8 MiB; choose fewer files"
                     );
-                    batch.update(|j| {
-                        j.view.rows.push(row);
-                        j.view.elapsed_ms = started.elapsed().as_millis() as u64;
-                    });
+                    rows.push(row);
                 }
+                batch.update(|j| {
+                    j.view.total_files = Some(paths.len());
+                    j.view.rows = rows;
+                });
+                let enrich = crate::media::rules::needs_media_info(&library, &request.profile_id)?;
+                let full =
+                    crate::media::rules::needs_full_media_info(&library, &request.profile_id)?;
+                std::thread::scope(|scope| -> Result<()> {
+                    // One waiting document bounds memory and read-ahead. Keep a single
+                    // technical worker; parallel deep scans can thrash spinning disks.
+                    let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+                    let producer_batch = &batch;
+                    let producer_engine = &engine;
+                    let producer_library = &library;
+                    let producer_profile = &request.profile_id;
+                    let producer = scope.spawn(move || {
+                        for (index, path) in paths.iter().enumerate() {
+                            if producer_batch.cancel.load(Ordering::SeqCst) {
+                                break;
+                            }
+                            producer_batch.update(|j| j.view.rows[index].status = "reading".into());
+                            let prepared = (|| {
+                                let mut task = producer_engine
+                                    .lock()
+                                    .map_err(|_| anyhow::anyhow!("Media engine unavailable"))?
+                                    .batch_inspection_task(path, enrich, full)?;
+                                task.identify_batch(producer_library, producer_profile)?;
+                                Ok::<_, anyhow::Error>(task)
+                            })();
+                            if sender.send((index, prepared)).is_err() {
+                                break;
+                            }
+                        }
+                    });
+                    let mut technical_bytes = 0;
+                    let result = (|| -> Result<()> {
+                        for (index, prepared) in &receiver {
+                            if batch.cancel.load(Ordering::SeqCst) {
+                                break;
+                            }
+                            let mut row = batch
+                                .job
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner())
+                                .view
+                                .rows[index]
+                                .clone();
+                            let previous_bytes = row_bytes[index];
+                            batch.update(|j| {
+                                j.view.current = row.path.clone();
+                                j.view.rows[index].status = "analysing".into();
+                            });
+                            row.status = "error".into();
+                            let reviewed = (|| -> Result<BatchTicket> {
+                                let task = prepared?;
+                                let document = task.run()?;
+                                engine
+                                    .lock()
+                                    .map_err(|_| anyhow::anyhow!("Media engine unavailable"))?
+                                    .review_batch(task, document, &library, &request.profile_id)
+                            })();
+                            match reviewed {
+                                Ok(ticket) => {
+                                    row.status = if ticket.changes.is_empty() {
+                                        "unchanged"
+                                    } else {
+                                        "ready"
+                                    }
+                                    .into();
+                                    row.changes = ticket.changes.clone();
+                                    row.warnings = ticket.warnings.clone();
+                                    if !ticket.changes.is_empty() {
+                                        technical_bytes += ticket.retained_bytes()?;
+                                        ensure!(
+                                            technical_bytes <= 64 * 1024 * 1024,
+                                            "Technical review exceeds 64 MiB; choose a smaller batch"
+                                        );
+                                        batch.update(|j| {
+                                            j.tickets.insert(row.id.clone(), ticket);
+                                        });
+                                    }
+                                }
+                                Err(error) => row.warnings.push(format!("{error:#}")),
+                            }
+                            bound_warnings(&mut row.warnings);
+                            retained = retained.saturating_sub(previous_bytes)
+                                + serde_json::to_vec(&row)?.len();
+                            ensure!(
+                                retained <= 8 * 1024 * 1024,
+                                "Batch review exceeds 8 MiB; choose fewer files"
+                            );
+                            batch.update(|j| {
+                                j.view.rows[index] = row;
+                                j.view.elapsed_ms = started.elapsed().as_millis() as u64;
+                            });
+                        }
+                        Ok(())
+                    })();
+                    // Unblock read-ahead on cancellation/error before joining it.
+                    drop(receiver);
+                    producer
+                        .join()
+                        .map_err(|_| anyhow::anyhow!("Batch identification worker failed"))?;
+                    result
+                })?;
                 Ok(())
             })();
             batch.update(|j| {
@@ -212,6 +294,16 @@ impl Batch {
                 }
                 if j.view.phase == "cancelled" {
                     j.tickets.clear();
+                }
+                for row in &mut j.view.rows {
+                    if matches!(row.status.as_str(), "queued" | "reading" | "analysing") {
+                        row.status = if j.view.phase == "cancelled" {
+                            "skipped"
+                        } else {
+                            "error"
+                        }
+                        .into();
+                    }
                 }
                 j.view.current.clear();
                 j.view.elapsed_ms = started.elapsed().as_millis() as u64;

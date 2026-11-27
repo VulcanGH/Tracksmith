@@ -319,6 +319,18 @@ pub fn evaluate(
                 if !matches_scope(rule.scope, context.track()) {
                     continue;
                 }
+                if context.track().is_some_and(|t| {
+                    t.mapping != "uid_number_type_verified"
+                        || t.mediainfo
+                            .as_ref()
+                            .is_some_and(|v| v["Tracksmith_Incomplete"] == true)
+                        || matches!(doc.analysis.status.as_str(), "pending" | "failed")
+                }) && super::rule_needs_media_info(rule)?
+                {
+                    note(&mut notes, &mut seen_notes,
+                        "Technical naming is waiting for verified metadata; existing titles are preserved.".into());
+                    continue;
+                }
                 compiled.tick()?;
                 if !compiled.group(&rule.conditions, &context)? {
                     continue;
@@ -378,6 +390,18 @@ pub fn evaluate(
                             continue;
                         }
                     };
+                    if action.property == Property::Title
+                        && super::rule_needs_media_info(rule)?
+                        && let (Some(before), Some(after)) =
+                            (fact.value.as_ref().and_then(Value::as_str), value.as_str())
+                        && ["atmos", "dts:x"].iter().any(|label| {
+                            before.to_lowercase().contains(label)
+                                && !after.to_lowercase().contains(label)
+                        })
+                    {
+                        note(&mut notes, &mut seen_notes, "Existing immersive audio label conflicts with detected facts; review it manually.".into());
+                        continue;
+                    }
                     actions.push((
                         key,
                         RuleProposal {

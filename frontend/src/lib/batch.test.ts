@@ -23,6 +23,9 @@ test("discovery and inspection explain that a populated list is still scanning",
   scanning.total_files = 456;
   assert.equal(batchStatusText(scanning),
     "Scanning files… 2 of 456 checked · 1 needs changes.");
+  scanning.rows.push(row("queued", "queued"), row("reading", "reading"), row("analysing", "analysing"));
+  assert.equal(batchStatusText(scanning),
+    "Scanning files… 2 of 456 checked · 1 needs changes.");
 });
 
 test("completion distinguishes ready files, unchanged files, empty scans and errors", () => {
@@ -45,10 +48,11 @@ test("skip unchanged retains errors and warning-bearing files", () => {
     row("clean", "unchanged"),
     row("warning", "unchanged", ["Inspect this"]),
     row("failed", "error"),
+    row("pending", "queued"),
   ];
   assert.deepEqual(
     filterBatchRows(rows, "", true).map((r) => r.id),
-    ["ready", "warning", "failed"],
+    ["ready", "warning", "failed", "pending"],
   );
   assert.deepEqual(filterBatchRows(rows, "", false), rows);
 });

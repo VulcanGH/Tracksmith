@@ -163,7 +163,7 @@ fn reject_links(path: &Path) -> Result<()> {
     Ok(())
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, serde::Serialize)]
 pub struct Stamp {
     len: u64,
     modified: SystemTime,
@@ -174,7 +174,7 @@ pub struct Identity {
     key: FileKey,
     stamp: Stamp,
 }
-#[derive(PartialEq, Eq, Hash)]
+#[derive(PartialEq, Eq, Hash, serde::Serialize)]
 struct FileKey {
     volume: u64,
     id: [u8; 16],
@@ -215,6 +215,10 @@ fn file_key(file: &File) -> Result<FileKey> {
     })
 }
 impl Identity {
+    pub fn cache_stamp(&self) -> anyhow::Result<String> {
+        Ok(serde_json::to_string(&(&self.key, &self.stamp))?)
+    }
+
     pub fn capture(path: &Path) -> Result<Self> {
         let handle = File::open(path)?;
         let metadata = handle.metadata()?;

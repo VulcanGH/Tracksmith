@@ -18,8 +18,11 @@ Download the [latest Windows x64 release](https://github.com/VulcanGH/Tracksmith
 - **SHA256SUMS:** hashes for both packages.
 
 Install [MKVToolNix](https://mkvtoolnix.download/downloads.html#windows) and
-[MediaInfo](https://mediaarea.net/en/MediaInfo/Download/Windows) separately. Standard Windows installation
-locations are detected automatically. MediaInfo's DLL is used; its GUI executable is not a CLI.
+[FFprobe from FFmpeg](https://ffmpeg.org/download.html#build-windows) separately.
+Standard installation locations and PATH are detected automatically.
+[MediaInfo](https://mediaarea.net/en/MediaInfo/Download/Windows) is optional for
+full analysis, video/HDR rules and compatibility when FFprobe is unavailable.
+Its DLL is used; its GUI executable is not a CLI.
 No media tools are bundled. Tracksmith supports MKV/MKA; MP4 is outside scope.
 
 Packages are unsigned. In-app updates verify the matching GitHub release package's SHA-256.
@@ -50,11 +53,14 @@ Port precedence: CLI, `TRACKSMITH_PORT`, configuration, default. There is no rem
 
 ### Batch and Windows integration
 
-In **Batch editor**, add files or folders, optionally include subfolders and filter by filename,
+In **Batch editor**, add files or folders, include subfolders by default and filter by filename,
 then choose a saved profile and **Preview batch**. Expand rows to review each before/after value;
 exclude files with their checkboxes, then **Save reviewed files**. The batch retains the reviewed
 profile revision even if rules subsequently change. Changed file identities or metadata require
 a new preview. Saves run serially through the same guarded writer and verification as Editor.
+Discovered files appear immediately as queued. Track reading runs ahead of the
+single technical worker, with bounded buffering; pending rows are never treated
+as unchanged or ready to save. The checked count advances only after review.
 **Stop after current file** allows the active operation to finish. A failed save or verification
 stops the queue; remaining files are explicitly skipped. There is no automatic rollback or retry.
 
@@ -64,8 +70,14 @@ confirmed unchanged files without warnings. Errors and warnings remain visible.
 **Search listed files** filters the current results by filename or path without rescanning
 or changing selections; saving includes selected files hidden by search. There is no pagination.
 
-Batch preview reads track metadata with mkvmerge and retains MediaInfo when the selected
-profile uses technical facts (including standard Atmos, codec-profile and channel-layout naming).
+Batch preview reads editable metadata with mkvmerge. Profiles needing audio
+facts use FFprobe and targeted Rust header checks; container/subtitle-only
+profiles skip technical probing. Video/HDR or whole-file technical rules use
+full analysis only when required by the selected profile.
+Verified technical facts are cached separately from titles, languages and flags. The
+cache survives restarts and is invalidated by external file changes, replacement or
+provider changes. Batch review retains its own facts so saving does not repeat
+bitstream analysis even if older cache entries have been evicted.
 Chapter/tag extraction is deferred to full inspection at save time. The guarded writer and
 post-write verification are unchanged. Every file must still be inspected to classify it as unchanged.
 While previewing, a spinner and checked/total count show that scanning is still running.
@@ -110,14 +122,16 @@ The first run creates `%APPDATA%\Tracksmith\config.json`. Override the directory
   "version": 1,
   "port": 7476,
   "media_roots": [],
-  "tools": { "mkvmerge": null, "mkvpropedit": null, "mediainfo": null }
+  "tools": { "mkvmerge": null, "mkvpropedit": null, "ffprobe": null, "mediainfo": null }
 }
 ```
 
 Configuration writes use a synced temporary file and atomic replacement in the same directory.
 Unknown configuration versions are rejected; future migrations must be explicit. Media roots and
 configured tool paths must be absolute. Optional `tools.mkvextract` and `tools.mediainfo_dll` can also
-be set. Standard Windows MKVToolNix and MediaInfo DLL installation paths are detected automatically;
+be set. FFprobe is detected on PATH or in `C:\Program Files\ffmpeg\bin`;
+set `tools.ffprobe` to its absolute executable path for other installations.
+Standard Windows MKVToolNix and MediaInfo DLL installation paths are detected automatically;
 `tools.mediainfo` must refer to a CLI, not the Windows GUI executable.
 
 ### Open and edit a file
@@ -205,10 +219,52 @@ unsaved until **Save library**. The library lives in `%APPDATA%\Tracksmith\rules
 replacement, a cross-process save lock and revision checks. It supports up to 128 rules, 32 profiles,
 four nested group levels, 64 condition/group nodes per rule and 1,024-byte regex patterns.
 
-Inspection uses mkvmerge, mkvextract and MediaInfo. Only a unique agreement on track UID, number and
-type attaches MediaInfo technical details to a track. Unmapped MediaInfo data and unknown container
-properties remain visible under Container information. No codec/title guesses are used to infer Atmos
+MKVToolNix supplies editable metadata and chapter/tag preservation. FFprobe
+supplies routine audio facts. Tracksmith validates packet positions against
+actual Matroska Block/SimpleBlock boundaries, then binds TrackNumber to the
+source UID; identical streams are never joined by title, language or array order.
+Native TrueHD checks validate frame sizes, lacing and major-sync checksums before
+accepting later Atmos signalling or corrected layouts. Deeper audio-frame
+inspection runs only for missing layouts or conflicting E-AC-3 channel counts.
+Unknown technical facts preserve affected names and remain visible for review. No codec/title guesses are used to infer Atmos
 or DTS:X. Chapters/editions, tags and attachments are inspect-only in this build.
+
+The editor loads the track list first, then checks technical details in the
+background without holding the engine lock. You can make manual edits while it
+works. Technical rules wait for verified facts; results preserve manual edits and
+undo history and cannot attach to a replaced inspection or changed file. Saving
+does not automatically reapply rules over a manually saved title.
+
+Routine audio uses a bounded FFprobe call and native gap checks, with no
+MediaInfo call or remux. A short scan's missing Atmos/DTS:X flag is not proof
+of absence; existing immersive labels remain protected. Unresolved audio does
+not silently trigger MediaInfo. **Retry full analysis** explicitly uses it.
+
+MediaInfo remains isolated at its existing parsing depth. It is selected for
+video/HDR or whole-file requirements and explicit full retries. If FFprobe is
+not installed, a visible diagnostic explains the slower compatibility path.
+A compatibility full-file attempt that exceeds eight seconds or fails tries
+a temporary stream copy
+of the first 30 seconds of audio, without re-encoding or changing the source.
+Sample facts are bound through preserved UIDs and independently identified sample
+track numbers. Sample statistics are not used as whole-file duration or bitrate.
+Incomplete video facts remain marked as unavailable, with **Retry full
+analysis** available. **Stop checking** cancels read-only analysis; switching
+files also cancels the previous editor's work. Active writes always finish.
+Explicit retries and profiles requiring video facts or
+whole-stream bitrate keep the original 90-second full-file budget. Formats
+MKVToolNix cannot split may remain unconfirmed when
+full analysis fails; their technical titles are preserved. Existing immersive
+labels are preserved for manual review when they conflict with detected facts.
+
+The bounded cache lives in `%APPDATA%\Tracksmith\technical-cache-v1` (up to 4,096
+records and 128 MiB total on disk, at most 4 MiB each; 64 records in memory).
+Editable metadata is always read fresh. Cache records
+are renewed after Tracksmith's own metadata-only writes only when the existing
+property, structure and chapter/tag verification succeeds. Failed analysis is
+not recorded as a successful result. See the
+[performance investigation](docs/METADATA-PERFORMANCE.md) for measurements and the
+continuing evaluation of FFprobe as an audio-first provider.
 
 Language edits use registered BCP 47 tags and the attributed ISO 639-2 table in [data](data/README.md).
 When a tag cannot be represented in the legacy field, the plan explicitly shows `und` there while
@@ -282,6 +338,8 @@ npm run test:batch
 cd ..
 python scripts/smoke.py target/release/tracksmith.exe
 python scripts/rules_check.py target/release/tracksmith.exe
+python scripts/metadata_check.py target/release/tracksmith.exe
+python scripts/ffprobe_check.py target/release/tracksmith.exe
 python scripts/batch_check.py target/release/tracksmith.exe
 python scripts/batch_check.py target/release/tracksmith.exe --benchmark-files 12
 python scripts/feasibility.py --mkvtoolnix "C:\Program Files\MKVToolNix" --mediainfo-dll "C:\Program Files\MediaInfo\MediaInfo.dll"
@@ -292,6 +350,15 @@ guards, structured command/language handling and browser scope/filtering. Fronte
 cover grouped typing, bulk edits, undo/redo/revert, TSV and proposal/manual separation. The executable smoke
 check covers embedded assets, authenticated status and browser scope/pagination/filter/favourites using
 disposable configuration and empty placeholder files.
+The metadata regression check requires GCC, FFmpeg and MKVToolNix. It uses a
+test-only DLL and disposable files to verify delayed analysis, cancellation,
+cache invalidation, write reuse and refusal when preservation metadata is missing.
+The FFprobe check verifies duplicate-track identity, unknown-data refusal,
+selective tool use, cache/write reuse and zero routine MediaInfo calls. Optional
+`--late-sample` and `--dtsx-sample` accept regression samples copied into its
+temporary workspace; no supplied source is modified.
+See [metadata performance results](docs/METADATA-PERFORMANCE.md) for provider
+comparisons and read-only corpus benchmark commands.
 The batch benchmark generates disposable audio fixtures, runs three previews and
 prints their elapsed times without saving media; it does not model large files or network storage.
 The rules checks cover convergence, conflicts, missing/unknown facts, protected manual originals, cycle

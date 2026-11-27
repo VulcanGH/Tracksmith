@@ -114,6 +114,7 @@ async fn run(args: Args) -> Result<()> {
     let app = api::router(AppState {
         config_dir: dir.display().to_string(),
         engine: Arc::new(Mutex::new(engine)),
+        analysis_slots: Arc::new(tokio::sync::Semaphore::new(1)),
         engine_status: Arc::new(RwLock::new(engine_status)),
         desktop: desktop.clone(),
         batch: batch.clone(),

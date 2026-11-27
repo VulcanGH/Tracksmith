@@ -84,6 +84,10 @@ async function post<T>(path: string, body: unknown): Promise<T> {
 }
 export const inspectFile = (path: string) =>
   post<Inspection>("inspect", { path });
+export const getEnrichment = (id: string, retry = false) =>
+  post<Inspection>("enrichment", { id, retry });
+export const cancelEnrichment = (id: string) =>
+  post<Inspection>("enrichment", { id, cancel: true });
 async function nativePicker<T>(endpoint: string): Promise<T | null> {
   const marker = Array.from(
     crypto.getRandomValues(new Uint8Array(16)),

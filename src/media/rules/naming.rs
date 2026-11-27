@@ -182,7 +182,11 @@ fn count(track: &Track) -> Option<usize> {
 pub fn channels(track: &Track) -> String {
     let count = count(track);
     let layout = info(track, "ChannelLayout");
-    let parts: Vec<_> = layout.split_whitespace().collect();
+    // MediaInfo appends Objects to DTS:X layouts; it is not a bed channel.
+    let parts: Vec<_> = layout
+        .split_whitespace()
+        .filter(|part| *part != "Objects")
+        .collect();
     let unique: BTreeSet<_> = parts.iter().copied().collect();
     // Accept one explicit layout only. Duplicate, conflicting or unknown tokens fall back to count.
     let recognized = [

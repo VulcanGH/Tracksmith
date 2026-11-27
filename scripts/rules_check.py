@@ -12,6 +12,7 @@ import socket
 import subprocess
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -71,6 +72,14 @@ def main():
                     details = error.read().decode()
                     assert error.code == expected, details
                     return json.loads(details)
+            def inspect_ready(path):
+                doc = request('inspect', {'path': str(path)})
+                for _ in range(400):
+                    if doc.get('analysis', {}).get('status') != 'pending' and not doc.get('sections_pending'):
+                        return doc
+                    doc = request('enrichment', {'id': doc['id']})
+                    time.sleep(0.05)
+                raise AssertionError('Technical analysis did not finish')
             library = request('rules')
             assert library['revision'] == 0 and len(library['rules']) >= 29
             assert library['profiles'][0]['auto_apply']
@@ -79,7 +88,7 @@ def main():
                        for r in library['rules'] for a in r['actions'])
             standard = request('rules/standard')
             assert standard == library
-            default_doc = request('inspect', {'path': str(fixture)})
+            default_doc = inspect_ready(fixture)
             default_preview = request('rules/preview', {'inspection_id': default_doc['id'], 'profile_id': 'general', 'manual_edits': [], 'test_rule': None, 'test_library': None})
             assert any(p['edit']['value'] == 'Unknown FLAC 1.0' for p in default_preview['proposals']), default_preview
             assert hashlib.sha256(fixture.read_bytes()).digest() == original
@@ -100,7 +109,7 @@ def main():
             ], check=True, capture_output=True, timeout=20)
             commentary_hash = hashlib.sha256(commentary.read_bytes()).digest()
             for _ in range(3):
-                doc = request('inspect', {'path': str(commentary)})
+                doc = inspect_ready(commentary)
                 preview = request('rules/preview', {
                     'inspection_id': doc['id'], 'profile_id': 'general',
                     'manual_edits': [], 'test_rule': None,
@@ -123,7 +132,7 @@ def main():
             assert saved['revision'] == 1
             assert 'changed since' in request('rules', library, 422)['message']
             assert request('rules/validate', saved)['profiles'] == saved['profiles']
-            doc = request('inspect', {'path': str(fixture)})
+            doc = inspect_ready(fixture)
             audio = doc['tracks'][0]
             payload = {'inspection_id': doc['id'], 'profile_id': 'general', 'manual_edits': [], 'test_rule': None, 'test_library': None}
             preview = request('rules/preview', payload)

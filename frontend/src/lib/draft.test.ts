@@ -72,3 +72,17 @@ test("rules are replaceable proposals and manual original-value overrides surviv
   assert.equal(state.present["1:title"], undefined);
   assert.equal(state.manual["1:title"].value, null);
 });
+
+test("technical proposals arriving after manual edits preserve those edits and undo history", () => {
+  const manual = { edit: { track_uid: "1", property: "title" as const, value: "My title" }, original: "Old" };
+  let state = draftReducer(emptyDraft(), { type: "apply", patches: [manual] });
+  state = draftReducer(state, { type: "rules", patches: [
+    { ...manual, edit: { ...manual.edit, value: "Detected TrueHD 7.1 + Atmos" } },
+    { edit: { track_uid: "2", property: "title", value: "Detected FLAC 2.0" }, original: "Other" },
+  ] });
+  assert.equal(state.present["1:title"].value, "My title");
+  assert.equal(state.present["2:title"].value, "Detected FLAC 2.0");
+  state = draftReducer(state, { type: "undo" });
+  assert.equal(state.present["1:title"].value, "My title");
+  assert.equal(state.present["2:title"], undefined);
+});

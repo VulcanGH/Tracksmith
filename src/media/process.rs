@@ -4,6 +4,7 @@ use std::{
     io::Read,
     path::Path,
     process::{Command, Stdio},
+    sync::atomic::{AtomicBool, Ordering},
     thread,
     time::{Duration, Instant},
 };
@@ -54,6 +55,25 @@ fn drain(mut stream: impl Read) -> (Vec<u8>, bool) {
 
 /// Inspections may time out. An active metadata write is always allowed to finish.
 pub fn run(exe: &Path, args: &[OsString], writing: bool) -> Result<Output> {
+    run_with_timeout(exe, args, writing, Duration::from_secs(90))
+}
+
+pub fn run_with_timeout(
+    exe: &Path,
+    args: &[OsString],
+    writing: bool,
+    timeout: Duration,
+) -> Result<Output> {
+    run_cancellable(exe, args, writing, timeout, None)
+}
+
+pub fn run_cancellable(
+    exe: &Path,
+    args: &[OsString],
+    writing: bool,
+    timeout: Duration,
+    cancel: Option<&AtomicBool>,
+) -> Result<Output> {
     let mut command = Command::new(exe);
     command
         .args(args)
@@ -89,12 +109,18 @@ pub fn run(exe: &Path, args: &[OsString], writing: bool) -> Result<Output> {
     let err_reader = thread::spawn(move || drain(stderr));
     let started = Instant::now();
     let mut timed_out = false;
+    let mut cancelled = false;
     let status = loop {
         if let Some(status) = child.try_wait()? {
             break status;
         }
-        if !writing && started.elapsed() > Duration::from_secs(90) {
+        if !writing && started.elapsed() > timeout {
             timed_out = true;
+            child.kill()?;
+            break child.wait()?;
+        }
+        if !writing && cancel.is_some_and(|flag| flag.load(Ordering::SeqCst)) {
+            cancelled = true;
             child.kill()?;
             break child.wait()?;
         }
@@ -106,9 +132,11 @@ pub fn run(exe: &Path, args: &[OsString], writing: bool) -> Result<Output> {
     let (stderr, err_truncated) = err_reader
         .join()
         .map_err(|_| anyhow::anyhow!("Utility error reader failed"))?;
+    ensure!(!cancelled, "Read-only technical analysis cancelled");
     ensure!(
         !timed_out,
-        "Inspection exceeded 90 seconds; no metadata write was started"
+        "Inspection exceeded {} seconds; no metadata write was started",
+        timeout.as_secs()
     );
     Ok(Output {
         code: status.code(),

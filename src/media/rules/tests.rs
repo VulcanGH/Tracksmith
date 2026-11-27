@@ -26,9 +26,10 @@ fn fixture() -> Inspection {
             json!({})
         },
         mediainfo: None,
-        mapping: "unconfirmed".into(),
+        mapping: "uid_number_type_verified".into(),
     };
     Inspection {
+        analysis: Default::default(),
         id: "fixture".into(),
         path: "/media/fixture.mka".into(),
         size_bytes: "100".into(),
@@ -39,6 +40,7 @@ fn fixture() -> Inspection {
         attachments: json!([]),
         chapters: section.clone(),
         tags: section,
+        sections_pending: false,
         container_info: json!({}),
         identification: json!({}),
         mediainfo: None,
@@ -317,6 +319,7 @@ fn technical_enrichment_is_retained_for_naming_and_nested_custom_rules() {
     use super::needs_media_info;
     let mut library = RuleLibrary::default();
     assert!(needs_media_info(&library, "general").unwrap());
+    assert!(!super::needs_full_media_info(&library, "general").unwrap());
     for rule in &mut library.rules {
         rule.enabled = matches!(rule.scope, Scope::Video | Scope::Container);
     }
@@ -337,6 +340,70 @@ fn technical_enrichment_is_retained_for_naming_and_nested_custom_rules() {
         groups: vec![],
     });
     assert!(needs_media_info(&library, "general").unwrap());
+    assert!(super::needs_full_media_info(&library, "general").unwrap());
+    let mut audio_only = fixture();
+    audio_only.tracks.retain(|track| track.kind == "audio");
+    assert_eq!(
+        super::requirements_for(&library, "general", &audio_only).unwrap(),
+        (false, false)
+    );
+    let mut video = audio_only.tracks[0].clone();
+    video.kind = "video".into();
+    audio_only.tracks.push(video);
+    assert_eq!(
+        super::requirements_for(&library, "general", &audio_only).unwrap(),
+        (true, true)
+    );
+}
+
+#[test]
+fn incomplete_technical_analysis_preserves_titles_and_allows_container_rules() {
+    let mut doc = fixture();
+    doc.tracks.truncate(1);
+    doc.title = Some("Old container".into());
+    doc.tracks[0].title = Some("English Dolby Digital Plus 5.1 + Atmos".into());
+    doc.tracks[0].codec = "E-AC-3".into();
+    doc.tracks[0].technical = json!({"codec_id":"A_EAC3","audio_channels":6});
+    doc.tracks[0].mediainfo = Some(json!({"Format":"E-AC-3","Channels":"6"}));
+    for status in ["pending", "failed"] {
+        doc.analysis.status = status.into();
+        let preview = evaluate(&doc, &RuleLibrary::default(), &request()).unwrap();
+        assert_eq!(preview.proposals.len(), 1);
+        assert!(preview.proposals[0].edit.track_uid.is_none());
+        assert!(
+            preview
+                .notes
+                .iter()
+                .any(|note| note.contains("verified metadata"))
+        );
+    }
+    doc.analysis.status = "partial".into();
+    doc.tracks[0].mapping = "unavailable".into();
+    let preview = evaluate(&doc, &RuleLibrary::default(), &request()).unwrap();
+    assert_eq!(preview.proposals.len(), 1);
+    doc.tracks[0].mapping = "uid_number_type_verified".into();
+    doc.tracks[0].mediainfo.as_mut().unwrap()["Tracksmith_Incomplete"] = json!(true);
+    let preview = evaluate(&doc, &RuleLibrary::default(), &request()).unwrap();
+    assert_eq!(preview.proposals.len(), 1);
+    assert!(preview.proposals[0].edit.track_uid.is_none());
+}
+
+#[test]
+fn dtsx_object_marker_does_not_count_as_a_physical_channel() {
+    let mut doc = fixture();
+    doc.tracks.truncate(1);
+    doc.tracks[0].language_ietf = Some("en".into());
+    doc.tracks[0].codec = "DTS-HD Master Audio".into();
+    doc.tracks[0].technical = json!({"codec_id":"A_DTS","audio_channels":8});
+    doc.tracks[0].mediainfo = Some(json!({
+        "Format":"DTS", "Format_AdditionalFeatures":"XLL X", "Channels":"8",
+        "ChannelLayout":"C L R LFE Lb Rb Lss Rss Objects"
+    }));
+    let preview = evaluate(&doc, &RuleLibrary::default(), &request()).unwrap();
+    assert_eq!(
+        preview.proposals[0].edit.value,
+        "English DTS-HD Master Audio 7.1 + DTS:X"
+    );
 }
 
 #[test]
@@ -511,12 +578,15 @@ fn standard_naming_uses_confirmed_formats_layouts_roles_and_editable_defaults() 
     doc.tracks[0].technical = json!({"codec_id":"A_TRUEHD","audio_channels":8});
     doc.tracks[0].mediainfo = None;
     doc.tracks[0].title = Some("Dolby Atmos".into());
-    assert_eq!(
-        evaluate(&doc, &library, &request()).unwrap().proposals[0]
-            .edit
-            .value,
-        json!("English Dolby TrueHD 8ch")
+    let uncertain = evaluate(&doc, &library, &request()).unwrap();
+    assert!(uncertain.proposals.is_empty());
+    assert!(
+        uncertain
+            .notes
+            .iter()
+            .any(|note| note.contains("immersive audio label"))
     );
+    assert_eq!(super::naming::immersive(&doc.tracks[0]), "");
     doc.tracks[0].title = Some("İpek Commentary".into());
     assert_eq!(
         evaluate(&doc, &library, &request()).unwrap().proposals[0]

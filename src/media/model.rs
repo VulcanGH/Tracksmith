@@ -68,6 +68,26 @@ pub struct MetadataSection {
 }
 
 #[derive(Clone, Serialize, Deserialize, ToSchema)]
+pub struct TechnicalState {
+    /// pending, ready, partial, failed, or not_requested.
+    pub status: String,
+    /// full, audio, audio_sample, or none.
+    pub scope: String,
+    pub cached: bool,
+    pub error: Option<String>,
+}
+impl Default for TechnicalState {
+    fn default() -> Self {
+        Self {
+            status: "ready".into(),
+            scope: "full".into(),
+            cached: false,
+            error: None,
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, ToSchema)]
 pub struct Inspection {
     pub id: String,
     pub path: String,
@@ -79,10 +99,14 @@ pub struct Inspection {
     pub attachments: Value,
     pub chapters: MetadataSection,
     pub tags: MetadataSection,
+    #[serde(default)]
+    pub sections_pending: bool,
     pub container_info: Value,
     /// Complete identification output, retaining unknown components.
     pub identification: Value,
     pub mediainfo: Option<Value>,
+    #[serde(default)]
+    pub analysis: TechnicalState,
     pub warnings: Vec<String>,
     pub write_available: bool,
     pub elapsed_ms: u64,

@@ -7,7 +7,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "1.0.2"
+    "version": "1.0.3"
   },
   "paths": {
     "/api/batch": {
@@ -385,6 +385,34 @@
               "text/plain": {
                 "schema": {
                   "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/enrichment": {
+      "post": {
+        "tags": [],
+        "operationId": "enrichment",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EnrichmentRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Inspection"
                 }
               }
             }
@@ -1585,6 +1613,24 @@
           }
         }
       },
+      "EnrichmentRequest": {
+        "type": "object",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "cancel": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "string"
+          },
+          "retry": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "FavouriteRequest": {
         "type": "object",
         "required": [
@@ -1695,6 +1741,9 @@
           "elapsed_ms"
         ],
         "properties": {
+          "analysis": {
+            "$ref": "#/components/schemas/TechnicalState"
+          },
           "attachments": {},
           "chapters": {
             "$ref": "#/components/schemas/MetadataSection"
@@ -1723,6 +1772,9 @@
           "mediainfo": {},
           "path": {
             "type": "string"
+          },
+          "sections_pending": {
+            "type": "boolean"
           },
           "size_bytes": {
             "type": "string"
@@ -2402,6 +2454,33 @@
           },
           "version": {
             "type": "string"
+          }
+        }
+      },
+      "TechnicalState": {
+        "type": "object",
+        "required": [
+          "status",
+          "scope",
+          "cached"
+        ],
+        "properties": {
+          "cached": {
+            "type": "boolean"
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "scope": {
+            "type": "string",
+            "description": "full, audio, audio_sample, or none."
+          },
+          "status": {
+            "type": "string",
+            "description": "pending, ready, partial, failed, or not_requested."
           }
         }
       },
