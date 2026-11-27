@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.5
+
+- Add **Verify independently** to batch review rows with warnings or errors.
+  Request fresh full-file MediaInfo analysis instead of reusing cached or short
+  technical checks, then refresh that row using its reviewed profile.
+- Clear warnings when the independent check resolves them. Keep conflicting
+  facts, unavailable analysis and file errors visible without changing the
+  media file or dismissing unresolved warnings.
+- Add regression coverage for independent Atmos confirmation, unresolved
+  warnings, unreadable files, cache bypass and unchanged source bytes.
+
 ## 1.0.4
 
 - Recover audio identities missed by the initial quick scan with a bounded,

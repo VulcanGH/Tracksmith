@@ -295,7 +295,7 @@ export function BatchPage({ active, onOpenFile }: { active: boolean; onOpenFile?
             view={{ ...view, rows: visibleRows }}
             excluded={excluded}
             controlsDisabled={busy || running}
-            recheck={view.phase === "review" ? (row) => void run(() => recheckBatchFile(view.id, row.id)) : undefined}
+            recheck={view.phase === "review" ? (row, independent) => void run(() => recheckBatchFile(view.id, row.id, independent)) : undefined}
             openFile={onOpenFile ? (row) => void run(() => onOpenFile(row.path)) : undefined}
             toggle={(id) =>
               setExcluded((old) => {
@@ -322,7 +322,7 @@ export function BatchRows({
   view: BatchView;
   excluded?: Set<string>;
   toggle?: (id: string) => void;
-  recheck?: (row: BatchRow) => void;
+  recheck?: (row: BatchRow, independent?: boolean) => void;
   openFile?: (row: BatchRow) => void;
   controlsDisabled?: boolean;
 }) {
@@ -354,7 +354,7 @@ function BatchResultRow({
   row: BatchRow;
   excluded?: boolean;
   toggle?: (id: string) => void;
-  recheck?: (row: BatchRow) => void;
+  recheck?: (row: BatchRow, independent?: boolean) => void;
   openFile?: (row: BatchRow) => void;
   controlsDisabled?: boolean;
 }) {
@@ -392,12 +392,13 @@ function BatchResultRow({
           {row.warnings.some((warning) => /Audio stream.*(identity|editable track)/i.test(warning)) && (
             <p>The audio check could not link every stream to an editable track. Those track names were left unchanged; this does not by itself indicate a damaged file.</p>
           )}
-          {recheck || openFile ? <p>Check again retries this file without rescanning the batch. Open in Editor lets you review its tracks, edit them manually or request full analysis. After saving there, check this row again to refresh the batch.</p> : <p>This saved report records the warning at the time of the scan. Open the file in Editor or preview it in a new batch to check its current state.</p>}
+          {recheck || openFile ? <p>Verify independently uses full-file MediaInfo analysis to check this file again. Resolved warnings clear automatically; unresolved issues remain visible. This can take longer and does not write to the file. Check again repeats the normal check. Open in Editor lets you review or edit the tracks.</p> : <p>This saved report records the warning at the time of the scan. Open the file in Editor or preview it in a new batch to check its current state.</p>}
         </div>
       )}
       {open && (recheck || openFile) && (
         <div className="editor-toolbar">
           {recheck && <Button variant="outline" disabled={controlsDisabled} onClick={() => recheck(row)}>Check again</Button>}
+          {recheck && (row.warnings.length > 0 || row.status === "error") && <Button variant="outline" disabled={controlsDisabled} onClick={() => recheck(row, true)}>Verify independently</Button>}
           {openFile && <Button variant="outline" disabled={controlsDisabled} onClick={() => openFile(row)}>Open in Editor</Button>}
         </div>
       )}

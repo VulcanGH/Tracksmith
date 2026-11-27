@@ -56,6 +56,9 @@ pub struct BatchSelection {
 pub struct BatchRecheck {
     pub job_id: String,
     pub row_id: String,
+    /// Bypass cached/short analysis and check with full-file MediaInfo.
+    #[serde(default)]
+    pub independent: bool,
 }
 #[derive(Default)]
 struct Job {
@@ -358,6 +361,9 @@ impl Batch {
                     .batch_inspection_task(Path::new(&row.path), enrich, full)?;
                 task.refresh_technical()?;
                 task.identify_batch(&library, &profile)?;
+                if input.independent {
+                    task.require_full_analysis();
+                }
                 let document = task.run()?;
                 engine
                     .lock()

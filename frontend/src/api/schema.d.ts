@@ -578,6 +578,8 @@ export interface components {
             message: string;
         };
         BatchRecheck: {
+            /** @description Bypass cached/short analysis and check with full-file MediaInfo. */
+            independent?: boolean;
             job_id: string;
             row_id: string;
         };

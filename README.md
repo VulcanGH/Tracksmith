@@ -74,6 +74,12 @@ Warning-only rows show **Needs review** and expand their details automatically.
 reviewed profile. **Open in Editor** opens that file for track review, manual
 edits or full analysis; save or revert existing editor drafts first. After
 saving in Editor, check that batch row again before saving it from the batch.
+For rows with warnings or errors, **Verify independently** bypasses cached and
+short technical checks and requests full-file MediaInfo analysis. It refreshes
+only that row using the reviewed profile, without writing to the media file.
+Resolved warnings clear automatically; remaining issues stay visible. MediaInfo
+must be installed for this independent check; it can take up to 90 seconds
+before an audio-sample fallback is attempted.
 Delayed audio streams receive targeted packet checks automatically, without
 increasing the scan depth for every file or falling back to MediaInfo.
 
@@ -348,6 +354,7 @@ python scripts/rules_check.py target/release/tracksmith.exe
 python scripts/metadata_check.py target/release/tracksmith.exe
 python scripts/ffprobe_check.py target/release/tracksmith.exe
 python scripts/batch_check.py target/release/tracksmith.exe
+python scripts/independent_check.py target/release/tracksmith.exe
 python scripts/batch_check.py target/release/tracksmith.exe --benchmark-files 12
 python scripts/feasibility.py --mkvtoolnix "C:\Program Files\MKVToolNix" --mediainfo-dll "C:\Program Files\MediaInfo\MediaInfo.dll"
 ```

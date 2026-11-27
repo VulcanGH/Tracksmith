@@ -45,6 +45,13 @@ pub struct InspectionTask {
     technical: bool,
 }
 impl InspectionTask {
+    /// Explicit second opinion, even when the profile needs no technical facts.
+    pub(crate) fn require_full_analysis(&mut self) {
+        self.batch = Some(true);
+        self.full_analysis = true;
+        self.retry = true;
+    }
+
     pub(crate) fn refresh_technical(&self) -> Result<()> {
         self.identity.verify(&self.path)?;
         self.adapter.invalidate_technical(&self.path)
@@ -82,7 +89,8 @@ impl InspectionTask {
             let mut document = document.clone();
             let technical = if let Some(enrich) = self.batch {
                 enrich
-                    && (document.analysis.status == "pending"
+                    && (self.retry
+                        || document.analysis.status == "pending"
                         || (self.full_analysis && document.analysis.scope != "full"))
             } else {
                 self.adapter.complete_sections(&mut document, &self.cancel);

@@ -175,8 +175,8 @@ export const saveBatch = (job_id: string, selected: string[]) =>
   post<BatchView>("batch/save", { job_id, selected });
 export const cancelBatch = () => post<BatchView>("batch/cancel", {});
 export const clearBatch = () => post<BatchView>("batch/clear", {});
-export const recheckBatchFile = (job_id: string, row_id: string) =>
-  post<BatchView>("batch/recheck", { job_id, row_id });
+export const recheckBatchFile = (job_id: string, row_id: string, independent = false) =>
+  post<BatchView>("batch/recheck", { job_id, row_id, independent });
 export const chooseBatchFile = () => nativePicker<string>("batch/pick-file");
 export const getPending = () => get<Models["LaunchItem"][]>("desktop/pending");
 export const openPending = (id: string) =>
