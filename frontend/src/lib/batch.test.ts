@@ -35,6 +35,8 @@ test("completion distinguishes ready files, unchanged files, empty scans and err
     "Preview complete — no changes needed.");
   assert.equal(batchStatusText(view("review")),
     "Preview complete — no matching files found.");
+  assert.equal(batchStatusText(view("review", [row("unconfirmed", "needs_review", ["Missing audio facts"])])),
+    "Preview complete — some files need review. Read the warnings.");
   assert.equal(batchStatusText(view("review", [row("bad", "error")])),
     "Preview complete — no files ready to save. Review the errors.");
   assert.match(batchStatusText(view("saving")), /^Saving/);
@@ -49,10 +51,11 @@ test("skip unchanged retains errors and warning-bearing files", () => {
     row("warning", "unchanged", ["Inspect this"]),
     row("failed", "error"),
     row("pending", "queued"),
+    row("unconfirmed", "needs_review", ["Unconfirmed audio"]),
   ];
   assert.deepEqual(
     filterBatchRows(rows, "", true).map((r) => r.id),
-    ["ready", "warning", "failed", "pending"],
+    ["ready", "warning", "failed", "pending", "unconfirmed"],
   );
   assert.deepEqual(filterBatchRows(rows, "", false), rows);
 });

@@ -51,10 +51,17 @@ pub struct BatchSelection {
     pub job_id: String,
     pub selected: Vec<String>,
 }
+#[derive(Deserialize, ToSchema)]
+#[serde(deny_unknown_fields)]
+pub struct BatchRecheck {
+    pub job_id: String,
+    pub row_id: String,
+}
 #[derive(Default)]
 struct Job {
     view: BatchView,
     tickets: HashMap<String, BatchTicket>,
+    review: Option<(crate::media::rules::model::RuleLibrary, String)>,
 }
 #[derive(Default)]
 pub struct Batch {
@@ -125,6 +132,7 @@ impl Batch {
                     ..Default::default()
                 },
                 tickets: HashMap::new(),
+                review: None,
             }
         });
         let batch = self.clone();
@@ -143,6 +151,7 @@ impl Batch {
                 batch.update(|j| {
                     j.view.profile = profile.name.clone();
                     j.view.revision = library.revision;
+                    j.review = Some((library.clone(), request.profile_id.clone()));
                 });
                 let paths = guard.batch_paths(
                     &request.sources,
@@ -235,12 +244,7 @@ impl Batch {
                             })();
                             match reviewed {
                                 Ok(ticket) => {
-                                    row.status = if ticket.changes.is_empty() {
-                                        "unchanged"
-                                    } else {
-                                        "ready"
-                                    }
-                                    .into();
+                                    row.status = ticket.row_status().into();
                                     row.changes = ticket.changes.clone();
                                     row.warnings = ticket.warnings.clone();
                                     if !ticket.changes.is_empty() {
@@ -307,11 +311,120 @@ impl Batch {
                 }
                 j.view.current.clear();
                 j.view.elapsed_ms = started.elapsed().as_millis() as u64;
+                batch.busy.store(false, Ordering::SeqCst);
             });
-            batch.busy.store(false, Ordering::SeqCst);
         });
         Ok(self.view())
     }
+    pub fn recheck(
+        self: &Arc<Self>,
+        engine: Arc<Mutex<Engine>>,
+        input: BatchRecheck,
+    ) -> Result<BatchView> {
+        let mut job = self.job.lock().unwrap_or_else(|e| e.into_inner());
+        ensure!(
+            job.view.id == input.job_id && job.view.phase == "review",
+            "Wait for batch preview to finish before checking a file again"
+        );
+        let index = job
+            .view
+            .rows
+            .iter()
+            .position(|row| row.id == input.row_id)
+            .context("Batch file is no longer available")?;
+        let (library, profile) = job.review.clone().context("Preview this batch again")?;
+        ensure!(
+            self.busy
+                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok(),
+            "Batch already running"
+        );
+        self.cancel.store(false, Ordering::SeqCst);
+        let mut row = job.view.rows[index].clone();
+        job.tickets.remove(&row.id);
+        job.view.rows[index].status = "analysing".into();
+        job.view.phase = "planning".into();
+        job.view.current = row.path.clone();
+        drop(job);
+        let batch = self.clone();
+        tokio::task::spawn_blocking(move || {
+            let started = Instant::now();
+            let result = (|| -> Result<BatchTicket> {
+                let enrich = crate::media::rules::needs_media_info(&library, &profile)?;
+                let full = crate::media::rules::needs_full_media_info(&library, &profile)?;
+                let mut task = engine
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("Media engine unavailable"))?
+                    .batch_inspection_task(Path::new(&row.path), enrich, full)?;
+                task.refresh_technical()?;
+                task.identify_batch(&library, &profile)?;
+                let document = task.run()?;
+                engine
+                    .lock()
+                    .map_err(|_| anyhow::anyhow!("Media engine unavailable"))?
+                    .review_batch(task, document, &library, &profile)
+            })();
+            let mut job = batch.job.lock().unwrap_or_else(|e| e.into_inner());
+            row.changes.clear();
+            row.warnings.clear();
+            let accepted = (|| -> Result<()> {
+                let ticket = result?;
+                row.status = ticket.row_status().into();
+                row.changes = ticket.changes.clone();
+                row.warnings = ticket.warnings.clone();
+                bound_warnings(&mut row.warnings);
+                let remaining: usize = job
+                    .view
+                    .rows
+                    .iter()
+                    .enumerate()
+                    .filter(|(i, _)| *i != index)
+                    .map(|(_, r)| serde_json::to_vec(r).map(|bytes| bytes.len()))
+                    .collect::<Result<Vec<_>, _>>()?
+                    .iter()
+                    .sum();
+                ensure!(
+                    remaining + serde_json::to_vec(&row)?.len() <= 8 * 1024 * 1024,
+                    "Recheck exceeds the batch review size limit"
+                );
+                if !ticket.changes.is_empty() {
+                    let bytes: usize = job
+                        .tickets
+                        .values()
+                        .map(BatchTicket::retained_bytes)
+                        .collect::<Result<Vec<_>>>()?
+                        .iter()
+                        .sum();
+                    ensure!(
+                        bytes + ticket.retained_bytes()? <= 64 * 1024 * 1024,
+                        "Recheck exceeds the technical review size limit"
+                    );
+                    job.tickets.insert(row.id.clone(), ticket);
+                }
+                Ok(())
+            })();
+            if let Err(error) = accepted {
+                row.status = "error".into();
+                row.changes.clear();
+                row.warnings = vec![format!("Could not recheck this file: {error:#}")];
+                bound_warnings(&mut row.warnings);
+            }
+            job.view.rows[index] = row;
+            job.view.phase = if batch.cancel.load(Ordering::SeqCst) {
+                job.tickets.clear();
+                "cancelled"
+            } else {
+                "review"
+            }
+            .into();
+            job.view.current.clear();
+            job.view.elapsed_ms += started.elapsed().as_millis() as u64;
+            batch.busy.store(false, Ordering::SeqCst);
+            drop(job);
+        });
+        Ok(self.view())
+    }
+
     pub fn execute(
         self: &Arc<Self>,
         engine: Arc<Mutex<Engine>>,
@@ -399,23 +512,25 @@ impl Batch {
                     }
                 }
                 j.tickets.clear();
-                j.view.phase = if batch.cancel.load(Ordering::SeqCst) {
-                    "cancelled"
-                } else {
-                    "finished"
-                }
-                .into();
                 j.view.current.clear();
             });
-            let view = batch.view();
-            if let Err(error) = persist(Path::new(&dir), &view) {
-                batch.update(|j| {
+            let mut view = batch.view();
+            view.phase = if batch.cancel.load(Ordering::SeqCst) {
+                "cancelled"
+            } else {
+                "finished"
+            }
+            .into();
+            let persisted = persist(Path::new(&dir), &view);
+            batch.update(|j| {
+                j.view.phase = view.phase;
+                if let Err(error) = persisted {
                     j.view
                         .messages
-                        .push(format!("Batch report could not be saved: {error:#}"))
-                });
-            }
-            batch.busy.store(false, Ordering::SeqCst);
+                        .push(format!("Batch report could not be saved: {error:#}"));
+                }
+                batch.busy.store(false, Ordering::SeqCst);
+            });
         });
         Ok(self.view())
     }

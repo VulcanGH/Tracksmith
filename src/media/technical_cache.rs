@@ -30,6 +30,18 @@ pub struct TechnicalCache {
     records: Mutex<HashMap<PathBuf, Record>>,
 }
 impl TechnicalCache {
+    pub fn invalidate(&self, path: &Path) -> Result<()> {
+        self.records
+            .lock()
+            .map_err(|_| anyhow::anyhow!("Technical cache unavailable"))?
+            .remove(path);
+        match fs::remove_file(self.filename(path)) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(error).context("Removing selected file's technical cache"),
+        }
+    }
+
     pub fn new(config: &Path) -> Self {
         Self {
             directory: config.join("technical-cache-v1"),
@@ -185,11 +197,21 @@ mod tests {
             paths.push(media);
         }
         let restarted = TechnicalCache::new(root.path());
-        for media in paths {
+        for media in &paths {
             assert_eq!(
-                restarted.load(&media, "provider").unwrap(),
+                restarted.load(media, "provider").unwrap(),
                 Some(json!({"channels": 8}))
             );
         }
+        assert!(restarted.load(&paths[0], "provider").unwrap().is_some());
+        restarted.invalidate(&paths[0]).unwrap();
+        assert!(restarted.load(&paths[0], "provider").unwrap().is_none());
+        assert!(
+            TechnicalCache::new(root.path())
+                .load(&paths[0], "provider")
+                .unwrap()
+                .is_none()
+        );
+        assert!(restarted.load(&paths[1], "provider").unwrap().is_some());
     }
 }

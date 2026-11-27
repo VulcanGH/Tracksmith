@@ -13,6 +13,7 @@ pub struct AdapterStatus {
 pub trait ContainerAdapter: Send + Sync {
     fn status(&self) -> AdapterStatus;
     fn inspect_quick(&self, path: &Path) -> Result<Inspection>;
+    fn invalidate_technical(&self, path: &Path) -> Result<()>;
     fn complete_sections(&self, document: &mut Inspection, cancel: &AtomicBool);
     fn complete_analysis(
         &self,

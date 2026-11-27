@@ -45,6 +45,10 @@ pub struct InspectionTask {
     technical: bool,
 }
 impl InspectionTask {
+    pub(crate) fn refresh_technical(&self) -> Result<()> {
+        self.identity.verify(&self.path)?;
+        self.adapter.invalidate_technical(&self.path)
+    }
     /// Read tracks once, ahead of the bounded batch enrichment worker.
     pub(crate) fn identify_batch(
         &mut self,
@@ -120,6 +124,15 @@ pub struct BatchTicket {
     document: Inspection,
 }
 impl BatchTicket {
+    pub fn row_status(&self) -> &'static str {
+        if !self.changes.is_empty() {
+            "ready"
+        } else if !self.warnings.is_empty() {
+            "needs_review"
+        } else {
+            "unchanged"
+        }
+    }
     pub fn retained_bytes(&self) -> Result<usize> {
         Ok(serde_json::to_vec(&self.document)?.len())
     }

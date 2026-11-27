@@ -68,6 +68,7 @@ export function Editor({
   onInspection,
   onManualEdits,
   onDirtyChange,
+  initialInspection,
 }: {
   hasLocations: boolean;
   active?: boolean;
@@ -75,15 +76,16 @@ export function Editor({
   onInspection?: (inspection: Inspection | undefined) => void;
   onManualEdits?: (edits: Edit[]) => void;
   onDirtyChange?: (dirty: boolean) => void;
+  initialInspection?: Inspection;
 }) {
-  const [path, setPath] = useState("");
+  const [path, setPath] = useState(initialInspection?.path ?? "");
   const pending = useQuery({
     queryKey: ["desktop-pending"],
     queryFn: getPending,
     enabled: active,
     refetchInterval: active ? 2000 : false,
   });
-  const [doc, setDoc] = useState<Inspection>();
+  const [doc, setDoc] = useState<Inspection | undefined>(initialInspection);
   const currentDoc = useRef(doc);
   currentDoc.current = doc;
   const [history, dispatch] = useReducer(draftReducer, undefined, emptyDraft);
@@ -113,7 +115,7 @@ export function Editor({
   const ruleContext = useRef("");
   ruleContext.current = JSON.stringify([doc?.id, doc?.analysis?.status, manualSignature, libraryQuery.data?.revision]);
   const stagedPhases = useRef(new Set<string>());
-  const autoInspection = useRef<string | undefined>(undefined);
+  const autoInspection = useRef<string | undefined>(initialInspection?.id);
   const enrichment = useQuery({
     queryKey: ["enrichment", doc?.id],
     queryFn: () => getEnrichment(doc!.id),

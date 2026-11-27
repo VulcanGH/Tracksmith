@@ -7,5 +7,14 @@ __pycache__/
 /artifacts/
 *.log
 .env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+/session.json
+/config.json
+/rules.json
 /docs/PROGRESS.md
 /docs/notices/rust-stdlib/

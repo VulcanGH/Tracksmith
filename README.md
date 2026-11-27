@@ -69,6 +69,13 @@ saved Activity reports remain available. **Skip unchanged** is on by default and
 confirmed unchanged files without warnings. Errors and warnings remain visible.
 **Search listed files** filters the current results by filename or path without rescanning
 or changing selections; saving includes selected files hidden by search. There is no pagination.
+Warning-only rows show **Needs review** and expand their details automatically.
+**Check again** refreshes one row without replacing the rest of the batch or its
+reviewed profile. **Open in Editor** opens that file for track review, manual
+edits or full analysis; save or revert existing editor drafts first. After
+saving in Editor, check that batch row again before saving it from the batch.
+Delayed audio streams receive targeted packet checks automatically, without
+increasing the scan depth for every file or falling back to MediaInfo.
 
 Batch preview reads editable metadata with mkvmerge. Profiles needing audio
 facts use FFprobe and targeted Rust header checks; container/subtitle-only

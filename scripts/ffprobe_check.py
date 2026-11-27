@@ -10,6 +10,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import tempfile
+import time
 
 from metadata_check import Service
 
@@ -74,7 +75,8 @@ def main() -> None:
                 'inspection_id': doc['id'], 'edits': [{
                     'track_uid': doc['tracks'][0]['uid'],
                     'property': 'title', 'value': 'Manual probe title',
-                }],
+                }, {'track_uid': None, 'property': 'title',
+                    'value': source.stem}],
             })
             saved = service.call('save', {'plan_id': plan['id']})
             assert saved['success'], saved
@@ -106,6 +108,19 @@ def main() -> None:
         with Service(args.executable, config, environment) as service:
             assert service.inspect(source)['analysis']['cached']
             assert not log.exists()
+
+        delayed = root / 'delayed.mka'
+        subprocess.run([
+            shutil.which('ffmpeg'), '-v', 'error', '-i', str(source),
+            '-itsoffset', '2', '-i', str(source), '-map', '0:a:0', '-map',
+            '1:a:0', '-c:a', 'copy', str(delayed),
+        ], check=True, capture_output=True, timeout=20)
+        with Service(args.executable, config, environment) as service:
+            doc = service.ready(service.inspect(delayed))
+            assert doc['analysis']['status'] == 'ready', doc
+            assert all(t['mapping'] == 'uid_number_type_verified'
+                       for t in doc['tracks']), doc
+            assert not log.exists(), 'Delayed track invoked MediaInfo'
 
         # A broken prober must never be called by a container-only profile.
         light = configuration('light', str(args.executable.resolve()))
@@ -192,8 +207,14 @@ def main() -> None:
             'index': 0, 'codec_name': 'flac', 'channels': 1,
             'channel_layout': 'mono', 'sample_rate': '44100',
         }], 'packets': []})
+        unlocked = root / 'unlock-probe'
+        mapped = json.loads(initial)
+        for stream in mapped['streams']:
+            stream['channel_layout'] = 'mono'
         fake_source.write_text(
-            '#include <stdio.h>\nint main(void) { puts('
+            '#include <stdio.h>\nint main(void) { FILE *f=fopen('
+            + json.dumps(str(unlocked)) + ',"rb"); if(f) { fclose(f); puts('
+            + json.dumps(json.dumps(mapped)) + '); } else puts('
             + json.dumps(payload) + '); return 0; }\n', encoding='utf-8')
         subprocess.run([
             shutil.which('gcc'), '-O2', '-o', str(fake), str(fake_source),
@@ -207,6 +228,51 @@ def main() -> None:
                            for p in service.rules(doc, [])['proposals'])
             assert source.read_bytes() == before
             assert not log.exists(), 'Unmapped audio fell back to MediaInfo'
+            broken = root / 'broken.mkv'
+            broken.write_bytes(b'not a container')
+            service.call('batch/preview', {
+                'sources': [str(source), str(broken)], 'recursive': False,
+                'filter': '', 'profile_id': 'general',
+            })
+            deadline = time.monotonic() + 10
+            view = service.call('batch')
+            while view['phase'] == 'planning':
+                assert time.monotonic() < deadline, view
+                time.sleep(0.05)
+                view = service.call('batch')
+            warned = next(r for r in view['rows']
+                          if r['path'].endswith('duplicate.mka'))
+            other = next(r for r in view['rows'] if r['id'] != warned['id'])
+            assert warned['status'] == 'needs_review', warned
+            try:
+                service.call('batch/recheck', {
+                    'job_id': view['id'], 'row_id': 'missing',
+                })
+            except AssertionError as error:
+                assert 'no longer available' in str(error), error
+            else:
+                raise AssertionError('Unknown batch row allowed recheck')
+            # Retain the reviewed profile even if the active profile changes.
+            library = service.call('rules')
+            library['profiles'][0]['rule_ids'] = []
+            service.call('rules', library)
+            unlocked.touch()
+            service.call('batch/recheck', {
+                'job_id': view['id'], 'row_id': warned['id'],
+            })
+            refreshed = service.call('batch')
+            while refreshed['phase'] == 'planning':
+                assert time.monotonic() < deadline, refreshed
+                time.sleep(0.05)
+                refreshed = service.call('batch')
+            assert refreshed['id'] == view['id'], refreshed
+            fixed = next(r for r in refreshed['rows']
+                         if r['id'] == warned['id'])
+            assert fixed['status'] == 'ready' and not fixed['warnings'], fixed
+            assert next(r for r in refreshed['rows']
+                        if r['id'] == other['id']) == other
+            assert source.read_bytes() == before
+            assert not log.exists()
         samples = sum(p is not None for p in (args.late_sample,
                                              args.dtsx_sample))
         print('PASS: duplicate identity, audio naming, cache restart, manual '

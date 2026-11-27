@@ -9,6 +9,7 @@ import socket
 import stat
 import subprocess
 import threading
+import time
 import urllib.error
 import urllib.request
 from feasibility import run
@@ -56,13 +57,21 @@ def verify(executable, fixture, root, mkvmerge, mkvextract, expected_hashes):
             except urllib.error.HTTPError as error:
                 raise RuntimeError(f'{path}: {error.read().decode()}') from error
         doc = post('inspect', {'path': str(fixture)})
+        deadline = time.monotonic() + 30
+        while (doc['analysis']['status'] == 'pending'
+               or doc.get('sections_pending')):
+            if time.monotonic() >= deadline:
+                raise RuntimeError('Fixture enrichment did not finish')
+            time.sleep(0.05)
+            doc = post('enrichment', {'id': doc['id']})
         assert doc['write_available'], doc['warnings']
         assert len(doc['tracks']) == 3
         assert doc['chapters']['available'] and doc['tags']['available']
         assert len(doc['attachments']) == 1
         assert all(isinstance(t['uid'], str) for t in doc['tracks'])
-        assert all(t['mapping'] == 'uid_number_type_verified' for t in doc['tracks']), doc['warnings']
         audio = next(t for t in doc['tracks'] if t['kind'] == 'audio')
+        assert audio['mapping'] == 'uid_number_type_verified', doc['warnings']
+        assert {t['uid'] for t in doc['tracks']} == set(expected_hashes)
         edits = [
             {'track_uid': None, 'property': 'title', 'value': 'Tracksmith API verified'},
             {'track_uid': audio['uid'], 'property': 'title', 'value': 'Audio â€” API & Unicode'},
@@ -122,7 +131,7 @@ def verify(executable, fixture, root, mkvmerge, mkvextract, expected_hashes):
             output = root / f"engine-{track['id']}.stream"
             run([mkvextract, fixture, 'tracks', f"{track['id']}:{output}"])
             assert hashlib.sha256(output.read_bytes()).hexdigest() == expected_hashes[str(track['properties']['uid'])]
-        return {'result': 'passed', 'verified': ['rich inspection', 'lossless UID transport', 'MediaInfo mapping',
+        return {'result': 'passed', 'verified': ['rich inspection', 'lossless UID transport', 'verified audio facts',
                 'staged save', 'language representations', 'flags', 'idempotent plan', 'metadata restoration',
                 'read-only rejection', 'stale-file rejection', 'filesystem scope', 'stream payload preservation']}
     finally:

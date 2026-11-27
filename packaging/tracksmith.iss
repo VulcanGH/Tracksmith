@@ -1,5 +1,5 @@
 #ifndef AppVersion
-  #define AppVersion "1.0.2"
+  #error AppVersion must be supplied by scripts/package.ps1
 #endif
 [Setup]
 AppId={{94106239-C4A2-434A-9792-47A87943B79D}

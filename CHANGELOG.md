@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.4
+
+- Recover audio identities missed by the initial quick scan with a bounded,
+  targeted check of only the missing streams. Handle delayed audio starts and
+  interleaved/laced packet ordering without slowing every file or using MediaInfo.
+- Mark warning-only batch files as **Needs review**, expand warnings automatically,
+  and explain why names were preserved instead of reporting them as unchanged.
+- Add **Check again** to refresh one batch row using its reviewed profile while
+  preserving the rest of the batch. Add **Open in Editor** for track review,
+  manual edits and full analysis; protect existing editor drafts.
+- Keep a saving batch busy until its report has been written, so completion
+  reliably means the next editor or batch action is available.
+- Build packages from a fresh, disposable staging directory and verify the
+  executable version before packaging. Pin CI actions to reviewed commits and
+  exclude local credentials from Git. Remove superseded profiling scripts and
+  condense the metadata investigation into current guidance and measurements.
+
 ## 1.0.3
 
 ### Faster metadata loading and reuse

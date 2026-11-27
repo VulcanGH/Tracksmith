@@ -6,7 +6,7 @@ Media access comes from native selection, explicit configured locations or retai
 history. Updates contact the configured GitHub Releases repository only on request.
 Media paths and inspection results are not sent to an external service.
 
-The source and Windows packages are MIT-licensed. The first release is unsigned;
+The source and Windows packages are MIT-licensed. Current releases are unsigned;
 updates verify HTTPS release metadata, the expected asset, version, size and SHA-256.
 The GitHub release account is the trust source for these unsigned updates. Optional
 publisher-certificate pinning is documented in [UPDATES.md](docs/UPDATES.md).

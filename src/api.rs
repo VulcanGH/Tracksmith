@@ -280,6 +280,31 @@ async fn batch_preview(
         .map(Json)
         .map_err(failure)
 }
+#[utoipa::path(post, path="/api/batch/recheck", request_body=crate::batch::BatchRecheck, responses((status=200,body=crate::batch::BatchView)))]
+async fn batch_recheck(
+    State(state): State<Arc<AppState>>,
+    Json(input): Json<crate::batch::BatchRecheck>,
+) -> Result<Json<crate::batch::BatchView>, ApiError> {
+    if state
+        .desktop
+        .updating
+        .load(std::sync::atomic::Ordering::SeqCst)
+        || state
+            .desktop
+            .closing
+            .load(std::sync::atomic::Ordering::SeqCst)
+    {
+        return Err(ApiError {
+            message: "Shutting down".into(),
+        });
+    }
+    state
+        .batch
+        .recheck(state.engine.clone(), input)
+        .map(Json)
+        .map_err(failure)
+}
+
 #[utoipa::path(post, path="/api/batch/save", request_body=crate::batch::BatchSelection, responses((status=200,body=crate::batch::BatchView)))]
 async fn batch_save(
     State(state): State<Arc<AppState>>,
@@ -693,7 +718,7 @@ async fn locations(
 }
 
 #[derive(OpenApi)]
-#[openapi(paths(status, inspect, enrichment, pick_file, browse, pick_folder, open_recent, open_location, favourite, plan, save, restore, locations, rule_library, standard_rules, save_rule_library, validate_rule_library, rule_catalog, rule_preview, batch_status, batch_clear, batch_preview, batch_save, batch_cancel, batch_history, batch_pick_file, desktop_pending, desktop_open, desktop_folder, desktop_dismiss, desktop_settings, desktop_configure, desktop_stop, update_status, update_check, update_install), components(schemas(Status, ApiError)), modifiers(&SecurityScheme))]
+#[openapi(paths(status, inspect, enrichment, pick_file, browse, pick_folder, open_recent, open_location, favourite, plan, save, restore, locations, rule_library, standard_rules, save_rule_library, validate_rule_library, rule_catalog, rule_preview, batch_status, batch_clear, batch_preview, batch_recheck, batch_save, batch_cancel, batch_history, batch_pick_file, desktop_pending, desktop_open, desktop_folder, desktop_dismiss, desktop_settings, desktop_configure, desktop_stop, update_status, update_check, update_install), components(schemas(Status, ApiError)), modifiers(&SecurityScheme))]
 pub struct ApiDoc;
 struct SecurityScheme;
 impl utoipa::Modify for SecurityScheme {
@@ -720,6 +745,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/batch/clear", post(batch_clear))
         .route("/api/batch/preview", post(batch_preview))
         .route("/api/batch/save", post(batch_save))
+        .route("/api/batch/recheck", post(batch_recheck))
         .route("/api/batch/cancel", post(batch_cancel))
         .route("/api/batch/history", get(batch_history))
         .route("/api/batch/pick-file", post(batch_pick_file))

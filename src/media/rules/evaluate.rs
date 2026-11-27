@@ -328,7 +328,7 @@ pub fn evaluate(
                 }) && super::rule_needs_media_info(rule)?
                 {
                     note(&mut notes, &mut seen_notes,
-                        "Technical naming is waiting for verified metadata; existing titles are preserved.".into());
+                        "Technical naming needs verified metadata; unconfirmed track titles were left unchanged. Recheck this file or open it in Editor.".into());
                     continue;
                 }
                 compiled.tick()?;

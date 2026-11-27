@@ -227,7 +227,7 @@ impl Matroska {
             })
             .collect();
         format!(
-            "audio-first-v1:{}:{fingerprints:?}",
+            "audio-first-v2:{}:{fingerprints:?}",
             env!("CARGO_PKG_VERSION")
         )
     }
@@ -741,6 +741,9 @@ fn json_safe(value: &mut Value) {
 }
 
 impl ContainerAdapter for Matroska {
+    fn invalidate_technical(&self, path: &Path) -> Result<()> {
+        self.cache.invalidate(path)
+    }
     fn status(&self) -> AdapterStatus {
         AdapterStatus {
             inspection_available: self.inspection_available(),

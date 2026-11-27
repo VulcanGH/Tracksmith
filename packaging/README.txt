@@ -1,4 +1,4 @@
-Tracksmith 1.0.0 — Media metadata. Refined.
+Tracksmith — Media metadata. Refined.
 
 Windows x64. Run tracksmith.exe to open the browser interface and tray icon.
 Closing the browser leaves Tracksmith running. Exit from the tray or Settings;
@@ -10,9 +10,11 @@ Metadata records: %APPDATA%\Tracksmith\operations
 Batch reports: %APPDATA%\Tracksmith\batches
 Override configuration folder with TRACKSMITH_CONFIG_DIR.
 
-Install MKVToolNix and MediaInfo separately. Utilities are detected from standard
-installation locations; explicit paths can be set in config.json. This package
-does not include third-party media utilities. MKV/MKA only; MP4 is out of scope.
+Install MKVToolNix and FFprobe (from FFmpeg) separately. FFprobe handles routine
+audio facts; MediaInfo is optional for full analysis, video/HDR requirements
+and compatibility when FFprobe is unavailable. Standard installation paths and
+PATH are checked; explicit paths can be set in config.json. This package does
+not include third-party media utilities. MKV/MKA only; MP4 is out of scope.
 
 The installer defaults to C:\Program Files\Tracksmith and requests administrator
 approval. The application itself runs as your normal user; data stays in AppData.
@@ -29,7 +31,10 @@ factory copy for review without overwriting custom rules.
 
 Open files anywhere using the native picker. Batch: add files/folders, select
 a saved rule profile, preview, expand rows to review changes, exclude files,
-then save reviewed files. Files run one at a time, with no fixed batch file-count cap.
+then save reviewed files. Subfolders is checked by default. Files are listed
+before checks finish; saves run one at a time, with no fixed batch file-count cap.
+Warnings expand automatically. Check again refreshes one row; Open in Editor
+allows manual review or full analysis. Existing editor drafts are protected.
 Cancellation completes the current file and skips the remainder. A failed
 write or verification stops the queue. Modified files require a new preview.
 

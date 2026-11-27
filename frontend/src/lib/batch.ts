@@ -12,6 +12,8 @@ export function batchStatusText(view: BatchView): string {
       if (!view.rows.length) return "Preview complete — no matching files found.";
       if (ready > 0)
         return `Preview complete — ${ready} ${ready === 1 ? "file" : "files"} ready to save.`;
+      if (view.rows.some((row) => row.status !== "error" && row.warnings.length > 0))
+        return "Preview complete — some files need review. Read the warnings.";
       return view.rows.some((row) => row.status === "error")
         ? "Preview complete — no files ready to save. Review the errors."
         : "Preview complete — no changes needed.";

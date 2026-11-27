@@ -7,7 +7,7 @@
       "name": "MIT",
       "identifier": "MIT"
     },
-    "version": "1.0.3"
+    "version": "1.0.4"
   },
   "paths": {
     "/api/batch": {
@@ -135,6 +135,34 @@
             "application/json": {
               "schema": {
                 "$ref": "#/components/schemas/BatchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchView"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/batch/recheck": {
+      "post": {
+        "tags": [],
+        "operationId": "batch_recheck",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BatchRecheck"
               }
             }
           },
@@ -1192,6 +1220,22 @@
             "type": "string"
           }
         }
+      },
+      "BatchRecheck": {
+        "type": "object",
+        "required": [
+          "job_id",
+          "row_id"
+        ],
+        "properties": {
+          "job_id": {
+            "type": "string"
+          },
+          "row_id": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
       },
       "BatchRequest": {
         "type": "object",

@@ -1,4 +1,4 @@
-import { StrictMode, useEffect, useState } from "react";
+import { StrictMode, useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import {
   QueryClient,
@@ -35,6 +35,7 @@ import {
   getStatus,
   launchPage,
   getPending,
+  inspectFile,
 } from "./api/client";
 import "./styles.css";
 
@@ -67,6 +68,8 @@ function App() {
   const [inspection, setInspection] = useState<Inspection>();
   const [manualEdits, setManualEdits] = useState<Edit[]>([]);
   const [editorDirty, setEditorDirty] = useState(false);
+  const editorDirtyRef = useRef(editorDirty);
+  editorDirtyRef.current = editorDirty;
   const [rulesDirty, setRulesDirty] = useState(false);
   const draftsClear =
     !editorDirty && !rulesDirty && (pending.data?.length ?? 0) === 0;
@@ -179,6 +182,7 @@ function App() {
           <div hidden={page !== "Editor"}>
             <Editor
               key={editorKey}
+              initialInspection={inspection}
               active={page === "Editor"}
               hasLocations={!!data?.media_root_count}
               onActivity={setActivity}
@@ -201,7 +205,14 @@ function App() {
             </Button>
           )}
           <div hidden={page !== "Batch editor"}>
-            <BatchPage active={page === "Batch editor"} />
+            <BatchPage active={page === "Batch editor"} onOpenFile={async (path) => {
+              if (editorDirtyRef.current) throw new Error("Save or revert the current editor changes before opening a batch file.");
+              const opened = await inspectFile(path);
+              if (editorDirtyRef.current) throw new Error("The editor has unsaved changes. Save or revert them first.");
+              setInspection(opened);
+              setEditorKey((key) => key + 1);
+              setPage("Editor");
+            }} />
           </div>
           {page === "Activity" && <ActivityPage />}
           <div hidden={page !== "Rules"}>

@@ -370,33 +370,24 @@ fn deepen_layout(
     Ok((candidates.len() == 1).then(|| candidates.into_iter().next().unwrap()))
 }
 
-/// Inspect only audio packets. Native gap checks run only for unconfirmed TrueHD.
-pub(super) fn inspect(exe: &Path, document: &Inspection, cancel: &AtomicBool) -> Result<Value> {
-    if !document.tracks.iter().any(|t| t.kind == "audio") {
-        return Ok(
-            json!({"media":{"track":[]}, "tracksmith_analysis":{"scope":"audio", "provider_name":"container"}}),
-        );
-    }
-    let path = Path::new(&document.path);
+fn probe(
+    exe: &Path,
+    path: &Path,
+    selector: &str,
+    interval: &str,
+    cancel: &AtomicBool,
+) -> Result<Value> {
     let bytes = process::run_cancellable(exe, &[
-        "-v".into(), "error".into(), "-select_streams".into(), "a".into(),
-        "-read_intervals".into(), "%+0.5".into(), "-show_streams".into(),
+        "-v".into(), "error".into(), "-select_streams".into(), selector.into(),
+        "-read_intervals".into(), interval.into(), "-show_streams".into(),
         "-show_packets".into(), "-show_entries".into(),
         "stream=index,codec_name,profile,channels,channel_layout,sample_rate,bits_per_sample,bits_per_raw_sample,bit_rate:packet=stream_index,pos".into(),
         "-of".into(), "json".into(), path.as_os_str().into(),
     ], false, PROBE_TIMEOUT, Some(cancel))?.checked()?;
-    let raw: Value = serde_json::from_slice(&bytes).context("Malformed FFprobe output")?;
-    let streams = raw["streams"]
-        .as_array()
-        .context("FFprobe returned no streams")?;
-    ensure!(streams.len() <= 1024, "Too many audio streams");
-    let gap_streams: HashSet<_> = streams
-        .iter()
-        .filter(|s| {
-            s["codec_name"] == "truehd" && !s["profile"].as_str().unwrap_or("").contains("Atmos")
-        })
-        .filter_map(|s| s["index"].as_u64())
-        .collect();
+    serde_json::from_slice(&bytes).context("Malformed FFprobe output")
+}
+
+fn packet_targets(raw: &Value) -> Result<BTreeMap<u64, u64>> {
     let mut targets = BTreeMap::new();
     for packet in raw["packets"].as_array().into_iter().flatten() {
         if let (Some(index), Some(position)) = (
@@ -410,11 +401,88 @@ pub(super) fn inspect(exe: &Path, document: &Inspection, cancel: &AtomicBool) ->
             );
         }
     }
-    let indexed = if targets.is_empty() {
+    Ok(targets)
+}
+
+/// Inspect only audio packets. Native gap checks run only for unconfirmed TrueHD.
+pub(super) fn inspect(exe: &Path, document: &Inspection, cancel: &AtomicBool) -> Result<Value> {
+    if !document.tracks.iter().any(|t| t.kind == "audio") {
+        return Ok(
+            json!({"media":{"track":[]}, "tracksmith_analysis":{"scope":"audio", "provider_name":"container"}}),
+        );
+    }
+    let path = Path::new(&document.path);
+    let raw = probe(exe, path, "a", "%+0.5", cancel)?;
+    let mut streams = raw["streams"]
+        .as_array()
+        .context("FFprobe returned no streams")?
+        .clone();
+    ensure!(streams.len() <= 1024, "Too many audio streams");
+    let gap_streams: HashSet<_> = streams
+        .iter()
+        .filter(|s| {
+            s["codec_name"] == "truehd" && !s["profile"].as_str().unwrap_or("").contains("Atmos")
+        })
+        .filter_map(|s| s["index"].as_u64())
+        .collect();
+    let mut targets = packet_targets(&raw)?;
+    let mut indexed = if targets.is_empty() {
         BTreeMap::new()
     } else {
         blocks(path, &targets, &gap_streams, cancel)?
     };
+    // Time-limited all-audio reads can stop before another track's first packet,
+    // even when that packet has an early timestamp. Read only missing streams.
+    let recovery_started = Instant::now();
+    for stream in &mut streams {
+        ensure!(!cancel.load(Ordering::SeqCst), "Audio inspection cancelled");
+        let index = stream["index"]
+            .as_u64()
+            .context("Invalid audio stream index")?;
+        if indexed.keys().any(|position| targets[position] == index) {
+            continue;
+        }
+        if recovery_started.elapsed() > PROBE_TIMEOUT {
+            break;
+        }
+        let recovered = match probe(exe, path, &index.to_string(), "%+#8", cancel) {
+            Ok(value) => value,
+            Err(error) => {
+                tracing::debug!(index, %error, "Targeted audio identity check unavailable");
+                continue;
+            }
+        };
+        let recovered_targets = packet_targets(&recovered)?;
+        ensure!(
+            recovered_targets.values().all(|v| *v == index),
+            "Targeted probe returned an unexpected audio stream"
+        );
+        if recovered_targets.is_empty() {
+            continue;
+        }
+        let recovered_blocks = blocks(path, &recovered_targets, &gap_streams, cancel)?;
+        for (position, target) in recovered_targets {
+            if let Some(previous) = targets.insert(position, target) {
+                ensure!(
+                    previous == target,
+                    "Audio streams share an ambiguous packet position"
+                );
+            }
+        }
+        indexed.extend(recovered_blocks);
+        if let Some(updated) = recovered["streams"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .find(|s| s["index"].as_u64() == Some(index))
+        {
+            ensure!(
+                updated["codec_name"] == stream["codec_name"],
+                "Audio codec changed between probes"
+            );
+            *stream = updated.clone();
+        }
+    }
     let mut bindings: HashMap<u64, HashSet<u64>> = HashMap::new();
     for (position, block) in &indexed {
         bindings
@@ -424,13 +492,13 @@ pub(super) fn inspect(exe: &Path, document: &Inspection, cancel: &AtomicBool) ->
     }
     let mut tracks = vec![];
     let mut warnings = vec![];
-    for stream in streams {
+    for stream in &streams {
         let index = stream["index"]
             .as_u64()
             .context("Invalid audio stream index")?;
         let Some(numbers) = bindings.get(&index).filter(|v| v.len() == 1) else {
             warnings.push(format!(
-                "Audio stream {index}: track identity unconfirmed; technical naming preserved."
+                "Audio stream {index}: the quick and targeted checks could not confirm its editable track. Its title was left unchanged. Check again or open this file in Editor for deeper analysis."
             ));
             continue;
         };

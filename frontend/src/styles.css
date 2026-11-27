@@ -2013,6 +2013,15 @@ input[data-source="manual"] {
   min-width: 80px;
   font-weight: 600;
 }
+.batch-warning-details {
+  margin: 10px;
+  padding: 12px;
+  border-left: 3px solid var(--border);
+  background: var(--muted);
+}
+.batch-warning-details p {
+  margin: 6px 0 0;
+}
 .batch-row table {
   width: 100%;
   border-collapse: collapse;

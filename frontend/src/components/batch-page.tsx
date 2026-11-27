@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "./ui/button";
@@ -11,6 +11,7 @@ import {
   saveBatch,
   cancelBatch,
   clearBatch,
+  recheckBatchFile,
   type BatchRow,
   getPending,
   folderPending,
@@ -20,7 +21,7 @@ import {
 import { batchStatusText, filterBatchRows } from "../lib/batch";
 import { prettyPath } from "../lib/paths";
 
-export function BatchPage({ active }: { active: boolean }) {
+export function BatchPage({ active, onOpenFile }: { active: boolean; onOpenFile?: (path: string) => Promise<void> }) {
   const jobClient = useQueryClient();
   const library = useQuery({
     queryKey: ["rule-library"],
@@ -274,6 +275,7 @@ export function BatchPage({ active }: { active: boolean }) {
               {view.rows.filter((r) => r.status === "unchanged").length} unchanged
               {" · "}
               {view.rows.filter((r) => r.status === "error").length} failed
+              {" · "}{view.rows.filter((r) => r.warnings.length > 0).length} with warnings
             </span>
           </div>
           {view.current && (
@@ -292,6 +294,9 @@ export function BatchPage({ active }: { active: boolean }) {
           <BatchRows
             view={{ ...view, rows: visibleRows }}
             excluded={excluded}
+            controlsDisabled={busy || running}
+            recheck={view.phase === "review" ? (row) => void run(() => recheckBatchFile(view.id, row.id)) : undefined}
+            openFile={onOpenFile ? (row) => void run(() => onOpenFile(row.path)) : undefined}
             toggle={(id) =>
               setExcluded((old) => {
                 const next = new Set(old);
@@ -310,10 +315,16 @@ export function BatchRows({
   view,
   excluded,
   toggle,
+  recheck,
+  openFile,
+  controlsDisabled,
 }: {
   view: BatchView;
   excluded?: Set<string>;
   toggle?: (id: string) => void;
+  recheck?: (row: BatchRow) => void;
+  openFile?: (row: BatchRow) => void;
+  controlsDisabled?: boolean;
 }) {
   return (
     <div className="batch-results">
@@ -323,6 +334,9 @@ export function BatchRows({
           row={row}
           excluded={excluded?.has(row.id)}
           toggle={toggle}
+          recheck={recheck}
+          openFile={openFile}
+          controlsDisabled={controlsDisabled}
         />
       ))}
     </div>
@@ -333,18 +347,26 @@ function BatchResultRow({
   row,
   excluded,
   toggle,
+  recheck,
+  openFile,
+  controlsDisabled,
 }: {
   row: BatchRow;
   excluded?: boolean;
   toggle?: (id: string) => void;
+  recheck?: (row: BatchRow) => void;
+  openFile?: (row: BatchRow) => void;
+  controlsDisabled?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  useEffect(() => { if (row.warnings.length > 0) setOpen(true); }, [row.warnings.length]);
   const checking = ["queued", "reading", "analysing"].includes(row.status);
-  const labels: Record<string, string> = { queued: "Queued", reading: "Reading tracks…", analysing: "Checking technical details…" };
-  const status = labels[row.status] ?? row.status;
+  const labels: Record<string, string> = { queued: "Queued", reading: "Reading tracks…", analysing: "Checking technical details…", needs_review: "Needs review" };
+  const status = row.status === "unchanged" && row.warnings.length ? "Needs review" : labels[row.status] ?? row.status;
   return (
     <details
       className="batch-row"
+      open={open}
       onToggle={(event) => setOpen(event.currentTarget.open)}
     >
       <summary>
@@ -360,10 +382,25 @@ function BatchResultRow({
         <span className="batch-status">{checking && <LoaderCircle className="batch-spinner" size={14} aria-hidden="true" />} {status}</span>
         <span title={row.path}>{prettyPath(row.path)}</span>
         <span className="muted">
-          {checking ? "Not ready to save" : `${row.changes.length} changes`}
+          {checking ? "Not ready to save" : row.warnings.length && !row.changes.length ? "No changes proposed — review warnings" : `${row.changes.length} changes`}
           {row.warnings.length > 0 && ` · ${row.warnings.length} warnings`}
         </span>
       </summary>
+      {open && row.warnings.length > 0 && (
+        <div className="batch-warning-details" role="note">
+          <strong>This file needs review</strong>
+          {row.warnings.some((warning) => /Audio stream.*(identity|editable track)/i.test(warning)) && (
+            <p>The audio check could not link every stream to an editable track. Those track names were left unchanged; this does not by itself indicate a damaged file.</p>
+          )}
+          {recheck || openFile ? <p>Check again retries this file without rescanning the batch. Open in Editor lets you review its tracks, edit them manually or request full analysis. After saving there, check this row again to refresh the batch.</p> : <p>This saved report records the warning at the time of the scan. Open the file in Editor or preview it in a new batch to check its current state.</p>}
+        </div>
+      )}
+      {open && (recheck || openFile) && (
+        <div className="editor-toolbar">
+          {recheck && <Button variant="outline" disabled={controlsDisabled} onClick={() => recheck(row)}>Check again</Button>}
+          {openFile && <Button variant="outline" disabled={controlsDisabled} onClick={() => openFile(row)}>Open in Editor</Button>}
+        </div>
+      )}
       {open && row.changes.length > 0 && (
         <table>
           <thead>
